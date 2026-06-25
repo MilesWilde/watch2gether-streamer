@@ -17,11 +17,25 @@
             </div>
 
             <div class="room-badge">
-                Live stream
+                <span id="connectionStatus">Connecting...</span>
+                ·
+                <span id="listenerCount">0</span> listeners
             </div>
         </header>
+        <section id="authPanel" class="card auth-panel">
+            <h2>Enter stream password</h2>
 
-        <section class="layout">
+            <form id="authForm" class="add-form">
+                <label for="streamPassword">Password</label>
+                <div class="input-row">
+                    <input id="streamPassword" name="streamPassword" type="password" autocomplete="current-password"
+                        placeholder="Stream password" />
+                    <button type="submit">Join</button>
+                </div>
+            </form>
+        </section>
+
+        <section id="appPanel" class="layout hidden">
             <section class="player-panel" aria-label="Video player">
                 <div id="player" class="player-placeholder">
                     Player will go here

@@ -1,0 +1,1 @@
+npx wrangler secret put ROOM_PASSWORD
