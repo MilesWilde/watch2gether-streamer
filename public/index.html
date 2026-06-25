@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Watch Party</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+    <main class="app-shell">
+        <header class="app-header">
+            <div>
+                <p class="eyebrow">Watch Party</p>
+                <h1>Watch videos together</h1>
+            </div>
+
+            <div class="room-badge">
+                Live stream
+            </div>
+        </header>
+
+        <section class="layout">
+            <section class="player-panel" aria-label="Video player">
+                <div id="player" class="player-placeholder">
+                    Player will go here
+                </div>
+
+                <div class="transport">
+                    <button id="playBtn" type="button">Play</button>
+                    <button id="pauseBtn" type="button">Pause</button>
+                    <button id="nextBtn" type="button">Next</button>
+                </div>
+            </section>
+
+            <aside class="sidebar">
+                <section class="card">
+                    <h2>Add video</h2>
+
+                    <form id="addVideoForm" class="add-form">
+                        <label for="videoUrl">YouTube URL</label>
+                        <div class="input-row">
+                            <input id="videoUrl" name="videoUrl" type="url"
+                                placeholder="https://www.youtube.com/watch?v=..." />
+                            <button type="submit">Add</button>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="card">
+                    <h2>Playlist</h2>
+                    <ol id="playlist" class="playlist">
+                        <li class="empty-state">No videos yet.</li>
+                    </ol>
+                </section>
+            </aside>
+        </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+</body>
+
+</html>
