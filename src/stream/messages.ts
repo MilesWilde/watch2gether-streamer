@@ -1,72 +1,104 @@
 import type { StreamState, UserRole } from "./playlist";
 
+export type AuthenticateClientMessage = {
+    type: "authenticate";
+    password: string;
+    mode: UserRole;
+};
+
+export type PingClientMessage = {
+    type: "ping";
+};
+
+export type RequestVideoClientMessage = {
+    type: "request_video";
+    url: string;
+};
+
+export type ApproveRequestClientMessage = {
+    type: "approve_request";
+    requestId: string;
+};
+
+export type DenyRequestClientMessage = {
+    type: "deny_request";
+    requestId: string;
+};
+
+export type RemovePlaylistItemClientMessage = {
+    type: "remove_playlist_item";
+    playlistItemId: string;
+};
+
+export type PlayPlaylistItemClientMessage = {
+    type: "play_playlist_item";
+    playlistItemId: string;
+};
+
+export type PlayVideoClientMessage = {
+    type: "play_video";
+    positionSec: number;
+};
+
+export type PauseVideoClientMessage = {
+    type: "pause_video";
+    positionSec: number;
+};
+
+export type NextVideoClientMessage = {
+    type: "next_video";
+};
+
+export type ClearRoomClientMessage = {
+    type: "clear_room";
+};
+
 export type ClientMessage =
-    | {
-        type: "authenticate";
-        password: string;
-        mode: "viewer" | "admin";
-    }
-    | {
-        type: "ping";
-    }
-    | {
-        type: "request_video";
-        url: string;
-    }
-    | {
-        type: "approve_request";
-        requestId: string;
-    }
-    | {
-        type: "deny_request";
-        requestId: string;
-    }
-    | {
-        type: "remove_playlist_item";
-        playlistItemId: string;
-    }
-    | {
-        type: "play_playlist_item";
-        playlistItemId: string;
-    }
-    | {
-        type: "play_video";
-        positionSec: number;
-    }
-    | {
-        type: "pause_video";
-        positionSec: number;
-    }
-    | {
-        type: "next_video";
-    }
-    | {
-        type: "clear_room";
-    };
+    | AuthenticateClientMessage
+    | PingClientMessage
+    | RequestVideoClientMessage
+    | ApproveRequestClientMessage
+    | DenyRequestClientMessage
+    | RemovePlaylistItemClientMessage
+    | PlayPlaylistItemClientMessage
+    | PlayVideoClientMessage
+    | PauseVideoClientMessage
+    | NextVideoClientMessage
+    | ClearRoomClientMessage;
+
+export type AuthenticatedServerMessage = {
+    type: "authenticated";
+    role: UserRole;
+    listenerCount: number;
+    serverNowMs: number;
+};
+
+export type PresenceServerMessage = {
+    type: "presence";
+    listenerCount: number;
+};
+
+export type StateServerMessage = {
+    type: "state";
+    state: StreamState;
+};
+
+export type PongServerMessage = {
+    type: "pong";
+    serverNowMs: number;
+};
+
+export type ErrorServerMessage = {
+    type: "error";
+    message: string;
+};
 
 export type ServerMessage =
-    | {
-        type: "authenticated";
-        role: UserRole;
-        listenerCount: number;
-        serverNowMs: number;
-    }
-    | {
-        type: "presence";
-        listenerCount: number;
-    }
-    | {
-        type: "state";
-        state: StreamState;
-    }
-    | {
-        type: "pong";
-        serverNowMs: number;
-    }
-    | {
-        type: "error";
-        message: string;
-    };
+    | AuthenticatedServerMessage
+    | PresenceServerMessage
+    | StateServerMessage
+    | PongServerMessage
+    | ErrorServerMessage;
 
 export function parseClientMessage(raw: unknown): ClientMessage | null {
     try {

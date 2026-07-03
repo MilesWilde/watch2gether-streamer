@@ -3,7 +3,7 @@
     font-family:
         Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
         sans-serif;
-    background: #0f1115;
+    background: #101114;
     color: #f7f7f8;
 }
 
@@ -14,9 +14,7 @@
 body {
     margin: 0;
     min-height: 100vh;
-    background:
-        radial-gradient(circle at top left, rgba(99, 102, 241, 0.25), transparent 32rem),
-        #0f1115;
+    background: #101114;
 }
 
 button,
@@ -25,9 +23,10 @@ input {
 }
 
 button {
+    min-height: 2.75rem;
     border: 0;
-    border-radius: 0.75rem;
-    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    padding: 0.65rem 0.95rem;
     background: #f7f7f8;
     color: #111318;
     font-weight: 700;
@@ -38,11 +37,17 @@ button:hover {
     filter: brightness(0.92);
 }
 
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.54;
+}
+
 input {
     width: 100%;
+    min-height: 2.75rem;
     border: 1px solid #303544;
-    border-radius: 0.75rem;
-    padding: 0.75rem 0.9rem;
+    border-radius: 0.5rem;
+    padding: 0.65rem 0.85rem;
     background: #171a22;
     color: #f7f7f8;
 }
@@ -52,7 +57,7 @@ input::placeholder {
 }
 
 .app-shell {
-    width: min(1120px, 100%);
+    width: min(1180px, 100%);
     margin: 0 auto;
     padding: 2rem;
 }
@@ -62,7 +67,7 @@ input::placeholder {
     align-items: end;
     justify-content: space-between;
     gap: 1rem;
-    margin-bottom: 2rem;
+    margin-bottom: 1.25rem;
 }
 
 .eyebrow {
@@ -80,9 +85,9 @@ h2 {
 }
 
 h1 {
-    font-size: clamp(2rem, 6vw, 4.5rem);
-    line-height: 0.95;
-    letter-spacing: -0.06em;
+    font-size: clamp(2rem, 5vw, 3.75rem);
+    line-height: 1;
+    letter-spacing: 0;
 }
 
 h2 {
@@ -95,13 +100,13 @@ h2 {
     border: 1px solid #303544;
     border-radius: 999px;
     padding: 0.55rem 0.9rem;
-    background: rgba(23, 26, 34, 0.72);
+    background: rgba(23, 26, 34, 0.88);
     color: #c7ccd8;
 }
 
 .layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-columns: minmax(0, 1fr) 360px;
     gap: 1rem;
     align-items: start;
 }
@@ -109,20 +114,23 @@ h2 {
 .player-panel,
 .card {
     border: 1px solid #303544;
-    border-radius: 1.25rem;
-    background: rgba(23, 26, 34, 0.86);
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+    border-radius: 0.5rem;
+    background: rgba(23, 26, 34, 0.9);
 }
 
 .player-panel {
     overflow: hidden;
 }
 
+.player-placeholder,
+.youtube-player {
+    aspect-ratio: 16 / 9;
+    background: #050609;
+}
+
 .player-placeholder {
     display: grid;
     place-items: center;
-    aspect-ratio: 16 / 9;
-    background: #050609;
     color: #7d8597;
     font-weight: 700;
 }
@@ -147,6 +155,7 @@ h2 {
 
 .volume-control input {
     width: 8rem;
+    min-height: auto;
     padding: 0;
     accent-color: #a5b4fc;
 }
@@ -155,6 +164,14 @@ h2 {
     background: #252a36;
     color: #f7f7f8;
     border: 1px solid #3d4659;
+}
+
+.danger-button,
+.remove-button,
+.deny-button {
+    background: #3a1f25;
+    color: #ffd7de;
+    border: 1px solid #6b2b37;
 }
 
 .sidebar {
@@ -167,7 +184,7 @@ h2 {
 }
 
 .auth-panel {
-    margin-bottom: 1rem;
+    max-width: 560px;
 }
 
 .add-form {
@@ -189,6 +206,12 @@ h2 {
     flex: 0 0 auto;
 }
 
+.panel-status {
+    margin: 0.85rem 0 0;
+    color: #7d8597;
+    font-size: 0.9rem;
+}
+
 .playlist {
     margin: 0;
     padding-left: 1.25rem;
@@ -199,6 +222,20 @@ h2 {
     margin: 0.5rem 0;
 }
 
+.playlist-item,
+.request-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.playlist-title,
+.request-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .request-content {
     min-width: 0;
     display: grid;
@@ -206,8 +243,8 @@ h2 {
 }
 
 .request-title {
-    font-weight: 700;
     color: #f7f7f8;
+    font-weight: 700;
 }
 
 .request-meta {
@@ -257,48 +294,32 @@ h2 {
     font-weight: 700;
 }
 
-.playlist-item,
-.request-item {
+.request-actions,
+.playlist-actions {
+    flex: 0 0 auto;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-}
-
-.playlist-title,
-.request-title {
-    min-width: 0;
-    overflow-wrap: anywhere;
+    gap: 0.4rem;
 }
 
 .remove-button,
 .approve-button,
+.deny-button,
 .playlist-play-button {
     flex: 0 0 auto;
     width: 2rem;
     height: 2rem;
+    min-height: 2rem;
     display: grid;
     place-items: center;
     border-radius: 999px;
     padding: 0;
 }
 
+.approve-button,
 .playlist-play-button {
     background: #e5edff;
     color: #172033;
     border: 1px solid #a5b4fc;
-}
-
-.remove-button {
-    background: #3a1f25;
-    color: #ffd7de;
-    border: 1px solid #6b2b37;
-}
-
-.danger-button {
-    background: #3a1f25;
-    color: #ffd7de;
-    border: 1px solid #6b2b37;
 }
 
 @media (max-width: 820px) {
@@ -329,52 +350,4 @@ h2 {
         flex: 1 1 auto;
         width: auto;
     }
-}
-
-.request-actions {
-    flex: 0 0 auto;
-    display: flex;
-    gap: 0.4rem;
-}
-
-.playlist-actions {
-    flex: 0 0 auto;
-    display: flex;
-    gap: 0.4rem;
-}
-
-.deny-button {
-    flex: 0 0 auto;
-    width: 2rem;
-    height: 2rem;
-    display: grid;
-    place-items: center;
-    border-radius: 999px;
-    padding: 0;
-    background: #3a1f25;
-    color: #ffd7de;
-    border: 1px solid #6b2b37;
-}
-
-.youtube-player {
-    aspect-ratio: 16 / 9;
-    background: #050609;
-}
-
-.youtube-player:fullscreen,
-.youtube-player:-webkit-full-screen {
-    width: 100vw;
-    height: 100vh;
-    aspect-ratio: auto;
-}
-
-.youtube-player.viewer-player iframe {
-    pointer-events: none;
-}
-
-.youtube-player > div,
-.youtube-player iframe {
-    width: 100%;
-    height: 100%;
-    display: block;
 }
