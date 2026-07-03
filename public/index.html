@@ -22,44 +22,67 @@
                 <span id="listenerCount">0</span> listeners
             </div>
         </header>
+
         <section id="authPanel" class="card auth-panel">
-            <h2>Enter stream password</h2>
+            <h2 id="authTitle">Enter password</h2>
 
             <form id="authForm" class="add-form">
-                <label for="streamPassword">Password</label>
+                <label id="passwordLabel" for="passwordInput">Password</label>
+
                 <div class="input-row">
-                    <input id="streamPassword" name="streamPassword" type="password" autocomplete="current-password"
-                        placeholder="Stream password" />
-                    <button type="submit">Join</button>
+                    <input id="passwordInput" name="passwordInput" type="password" autocomplete="current-password"
+                        placeholder="Password" />
+                    <button id="joinButton" type="submit">Join</button>
                 </div>
             </form>
         </section>
 
         <section id="appPanel" class="layout hidden">
             <section class="player-panel" aria-label="Video player">
-                <div id="player" class="player-placeholder">
-                    Player will go here
+                <div id="emptyPlayer" class="player-placeholder">
+                    No video selected
+                </div>
+
+                <div id="player" class="youtube-player hidden">
+                    <div id="youtubePlayer"></div>
                 </div>
 
                 <div class="transport">
-                    <button id="playBtn" type="button">Play</button>
-                    <button id="pauseBtn" type="button">Pause</button>
+                    <button id="playBtn" type="button" disabled>Play</button>
+                    <button id="pauseBtn" type="button" disabled>Pause</button>
                     <button id="nextBtn" type="button">Next</button>
+                    <button id="clearBtn" class="danger-button" type="button">Clear</button>
+                    <label class="volume-control" for="volumeInput">
+                        Volume
+                        <input id="volumeInput" type="range" min="0" max="100" value="80" />
+                    </label>
+                    <button id="fullscreenBtn" class="secondary-button" type="button">Fullscreen</button>
                 </div>
             </section>
 
             <aside class="sidebar">
                 <section class="card">
-                    <h2>Add video</h2>
+                    <h2>Request video</h2>
 
-                    <form id="addVideoForm" class="add-form">
+                    <form id="requestVideoForm" class="add-form">
                         <label for="videoUrl">YouTube URL</label>
                         <div class="input-row">
                             <input id="videoUrl" name="videoUrl" type="url"
                                 placeholder="https://www.youtube.com/watch?v=..." />
-                            <button type="submit">Add</button>
+                            <button type="submit">Request</button>
                         </div>
                     </form>
+                </section>
+
+                <section class="card">
+                    <div class="card-header">
+                        <h2>Requests</h2>
+                        <span id="roleBadge" class="role-badge">viewer</span>
+                    </div>
+
+                    <ol id="requests" class="playlist">
+                        <li class="empty-state">No requests yet.</li>
+                    </ol>
                 </section>
 
                 <section class="card">
