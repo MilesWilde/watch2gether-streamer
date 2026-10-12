@@ -2,6 +2,8 @@ import type { ClientMessage } from "../../stream/messages";
 import type { StreamState, UserRole } from "../../stream/playlist";
 import { useYouTubePlayer } from "../hooks/useYouTubePlayer";
 
+const playbackRates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+
 type PlayerPanelProps = {
 	role: UserRole;
 	state: StreamState | null;
@@ -39,9 +41,11 @@ export function PlayerPanel({
 			{currentItem ? null : <div className="player-placeholder">No video selected</div>}
 
 			<div
-				ref={player.playerContainerRef}
+				ref={player.playerFrameRef}
 				className={currentItem ? "youtube-player" : "youtube-player hidden"}
-			/>
+			>
+				<div ref={player.playerMountRef} className="youtube-player-mount" />
+			</div>
 
 			<div className="transport">
 				{isAdmin ? (
@@ -58,6 +62,23 @@ export function PlayerPanel({
 						<button type="button" className="danger-button" onClick={clearRoom}>
 							Clear
 						</button>
+						<label className="speed-control" htmlFor="playbackRate">
+							Speed
+							<select
+								id="playbackRate"
+								value={state?.playback.playbackRate ?? 1}
+								disabled={!currentItem}
+								onChange={(event) =>
+									player.setPlaybackRate(Number(event.currentTarget.value))
+								}
+							>
+								{playbackRates.map((playbackRate) => (
+									<option key={playbackRate} value={playbackRate}>
+										{playbackRate}x
+									</option>
+								))}
+							</select>
+						</label>
 					</>
 				) : null}
 

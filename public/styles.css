@@ -18,7 +18,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
     font: inherit;
 }
 
@@ -42,7 +43,8 @@ button:disabled {
     opacity: 0.54;
 }
 
-input {
+input,
+select {
     width: 100%;
     min-height: 2.75rem;
     border: 1px solid #303544;
@@ -54,6 +56,16 @@ input {
 
 input::placeholder {
     color: #7d8597;
+}
+
+select {
+    cursor: pointer;
+}
+
+input[type="checkbox"] {
+    width: 1rem;
+    min-height: 1rem;
+    accent-color: #a5b4fc;
 }
 
 .app-shell {
@@ -128,6 +140,13 @@ h2 {
     background: #050609;
 }
 
+.youtube-player-mount,
+.youtube-player iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
 .player-placeholder {
     display: grid;
     place-items: center;
@@ -138,19 +157,38 @@ h2 {
 .transport {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.75rem;
     padding: 1rem;
     border-top: 1px solid #303544;
 }
 
 .volume-control {
-    margin-left: auto;
+    flex: 1 1 12rem;
+    min-width: 12rem;
     display: flex;
     align-items: center;
     gap: 0.6rem;
     color: #c7ccd8;
     font-size: 0.9rem;
     font-weight: 700;
+}
+
+.transport .secondary-button {
+    margin-left: auto;
+}
+
+.speed-control {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: #c7ccd8;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.speed-control select {
+    width: 5.25rem;
 }
 
 .volume-control input {
@@ -210,6 +248,78 @@ h2 {
     margin: 0.85rem 0 0;
     color: #7d8597;
     font-size: 0.9rem;
+}
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(5, 6, 9, 0.72);
+}
+
+.modal {
+    width: min(720px, 100%);
+    max-height: min(760px, 92vh);
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    border: 1px solid #303544;
+    border-radius: 0.5rem;
+    background: #171a22;
+}
+
+.modal-header,
+.modal-toolbar,
+.modal-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.modal-header,
+.modal-toolbar {
+    border-bottom: 1px solid #303544;
+}
+
+.modal-actions {
+    border-top: 1px solid #303544;
+}
+
+.modal-subtitle,
+.modal-selection-count {
+    margin: 0.3rem 0 0;
+    color: #7d8597;
+    font-size: 0.9rem;
+}
+
+.playlist-import-list {
+    min-height: 0;
+    margin: 0;
+    padding: 0.5rem 1rem;
+    overflow: auto;
+    list-style: none;
+}
+
+.playlist-import-item {
+    border-bottom: 1px solid #252a36;
+}
+
+.playlist-import-item:last-child {
+    border-bottom: 0;
+}
+
+.playlist-import-item label {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: start;
+    padding: 0.75rem 0;
+    color: #f7f7f8;
+    line-height: 1.35;
 }
 
 .playlist {
@@ -346,8 +456,19 @@ h2 {
         margin-left: 0;
     }
 
+    .transport .secondary-button {
+        margin-left: 0;
+    }
+
     .volume-control input {
         flex: 1 1 auto;
         width: auto;
+    }
+
+    .modal-header,
+    .modal-toolbar,
+    .modal-actions {
+        align-items: stretch;
+        flex-direction: column;
     }
 }

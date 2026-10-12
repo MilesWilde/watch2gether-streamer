@@ -1,19 +1,55 @@
 import { useState, type SyntheticEvent } from "react";
 import type { ClientMessage } from "../../stream/messages";
+import type { UserRole } from "../../stream/playlist";
+import type { YouTubePlaylistPreview } from "../../stream/youtube-playlists";
+import { fetchPlaylistPreview } from "../lib/youtubePlaylistPreview";
+import { PlaylistImportModal } from "./PlaylistImportModal";
 
 type RequestVideoPanelProps = {
+	mode: UserRole;
+	password: string;
 	onSend: (message: ClientMessage) => void;
+	onStatusChange: (status: string | null) => void;
 };
 
-export function RequestVideoPanel({ onSend }: RequestVideoPanelProps) {
+export function RequestVideoPanel({
+	mode,
+	password,
+	onSend,
+	onStatusChange
+}: RequestVideoPanelProps) {
 	const [url, setUrl] = useState("");
+	const [playlistPreview, setPlaylistPreview] =
+		useState<YouTubePlaylistPreview | null>(null);
+	const [loadingPlaylist, setLoadingPlaylist] = useState(false);
 
-	function submit(event: SyntheticEvent<HTMLFormElement>): void {
+	async function submit(event: SyntheticEvent<HTMLFormElement>): Promise<void> {
 		event.preventDefault();
 
 		const trimmedUrl = url.trim();
 
 		if (!trimmedUrl) {
+			return;
+		}
+
+		if (looksLikePlaylistUrl(trimmedUrl)) {
+			setLoadingPlaylist(true);
+			onStatusChange(null);
+
+			try {
+				const preview = await fetchPlaylistPreview({
+					url: trimmedUrl,
+					mode,
+					password
+				});
+
+				setPlaylistPreview(preview);
+			} catch (error) {
+				onStatusChange(error instanceof Error ? error.message : "Could not load playlist.");
+			} finally {
+				setLoadingPlaylist(false);
+			}
+
 			return;
 		}
 
@@ -42,6 +78,29 @@ export function RequestVideoPanel({ onSend }: RequestVideoPanelProps) {
 					<button type="submit">Request</button>
 				</div>
 			</form>
+
+			{loadingPlaylist ? (
+				<p className="panel-status">Loading playlist...</p>
+			) : null}
+
+			{playlistPreview ? (
+				<PlaylistImportModal
+					preview={playlistPreview}
+					onClose={() => setPlaylistPreview(null)}
+					onImport={(videos) => {
+						onSend({
+							type: "request_videos",
+							videos
+						});
+						setPlaylistPreview(null);
+						setUrl("");
+					}}
+				/>
+			) : null}
 		</section>
 	);
+}
+
+function looksLikePlaylistUrl(url: string): boolean {
+	return /(?:[?&]list=|^PL|^OLAK5uy_|^UU|^LL|^FL)/.test(url);
 }

@@ -1,4 +1,9 @@
-import type { StreamState, UserRole } from "./playlist";
+import {
+    normalizePlaybackRate,
+    type RequestedVideoInput,
+    type StreamState,
+    type UserRole
+} from "./playlist";
 
 export type AuthenticateClientMessage = {
     type: "authenticate";
@@ -13,6 +18,11 @@ export type PingClientMessage = {
 export type RequestVideoClientMessage = {
     type: "request_video";
     url: string;
+};
+
+export type RequestVideosClientMessage = {
+    type: "request_videos";
+    videos: RequestedVideoInput[];
 };
 
 export type ApproveRequestClientMessage = {
@@ -45,6 +55,12 @@ export type PauseVideoClientMessage = {
     positionSec: number;
 };
 
+export type SetPlaybackRateClientMessage = {
+    type: "set_playback_rate";
+    positionSec: number;
+    playbackRate: number;
+};
+
 export type NextVideoClientMessage = {
     type: "next_video";
 };
@@ -57,12 +73,14 @@ export type ClientMessage =
     | AuthenticateClientMessage
     | PingClientMessage
     | RequestVideoClientMessage
+    | RequestVideosClientMessage
     | ApproveRequestClientMessage
     | DenyRequestClientMessage
     | RemovePlaylistItemClientMessage
     | PlayPlaylistItemClientMessage
     | PlayVideoClientMessage
     | PauseVideoClientMessage
+    | SetPlaybackRateClientMessage
     | NextVideoClientMessage
     | ClearRoomClientMessage;
 
@@ -140,6 +158,26 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         }
 
         if (
+            parsed.type === "request_videos" &&
+            "videos" in parsed &&
+            Array.isArray(parsed.videos)
+        ) {
+            const videos = parsed.videos
+                .map(parseRequestedVideoInput)
+                .filter((item): item is RequestedVideoInput => item !== null)
+                .slice(0, 200);
+
+            if (videos.length === 0) {
+                return null;
+            }
+
+            return {
+                type: "request_videos",
+                videos
+            };
+        }
+
+        if (
             parsed.type === "approve_request" &&
             "requestId" in parsed &&
             typeof parsed.requestId === "string"
@@ -197,6 +235,16 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
             };
         }
 
+        if (parsed.type === "set_playback_rate") {
+            return {
+                type: "set_playback_rate",
+                positionSec: getPositionSec(parsed),
+                playbackRate: normalizePlaybackRate(
+                    "playbackRate" in parsed ? parsed.playbackRate : undefined
+                )
+            };
+        }
+
         if (parsed.type === "next_video") {
             return {
                 type: "next_video"
@@ -213,6 +261,23 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     } catch {
         return null;
     }
+}
+
+function parseRequestedVideoInput(value: unknown): RequestedVideoInput | null {
+    if (typeof value !== "object" || value === null) {
+        return null;
+    }
+
+    const input = value as Record<string, unknown>;
+
+    if (typeof input.url !== "string") {
+        return null;
+    }
+
+    return {
+        url: input.url,
+        title: typeof input.title === "string" ? input.title : undefined
+    };
 }
 
 function getPositionSec(parsed: Record<string, unknown>): number {

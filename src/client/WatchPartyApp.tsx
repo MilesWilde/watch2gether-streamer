@@ -8,18 +8,23 @@ import { RequestVideoPanel } from "./components/RequestVideoPanel";
 import { RequestsPanel } from "./components/RequestsPanel";
 import { RoomHeader } from "./components/RoomHeader";
 import { useWatchPartySocket } from "./hooks/useWatchPartySocket";
+import {
+	clearSavedPassword,
+	getSavedPassword,
+	savePassword
+} from "./lib/savedPassword";
 
 export function WatchPartyApp() {
 	const authMode = useMemo<UserRole>(
 		() => (window.location.pathname === "/admin" ? "admin" : "viewer"),
 		[]
 	);
-	const [password, setPassword] = useState("");
+	const [password, setPassword] = useState(() => getSavedPassword(authMode));
 	const [role, setRole] = useState<UserRole>("viewer");
 	const [listenerCount, setListenerCount] = useState(0);
 	const [streamState, setStreamState] = useState<StreamState | null>(null);
 	const [serverError, setServerError] = useState<string | null>(null);
-	const [sessionRequested, setSessionRequested] = useState(false);
+	const [sessionRequested, setSessionRequested] = useState(() => Boolean(password));
 
 	const handleServerMessage = useCallback((message: ServerMessage): void => {
 		switch (message.type) {
@@ -42,20 +47,36 @@ export function WatchPartyApp() {
 		}
 	}, []);
 
+	const handleAuthenticationFailed = useCallback(
+		(message: string): void => {
+			clearSavedPassword(authMode);
+			setPassword("");
+			setSessionRequested(false);
+			setRole("viewer");
+			setStreamState(null);
+			setServerError(message);
+		},
+		[authMode]
+	);
+
+	const handleAuthenticationLost = useCallback((): void => {
+		setRole("viewer");
+	}, []);
+
 	const socket = useWatchPartySocket({
 		authMode,
 		password,
 		enabled: sessionRequested,
 		onMessage: handleServerMessage,
-		onAuthenticationLost: () => {
-			setRole("viewer");
-		}
+		onAuthenticationFailed: handleAuthenticationFailed,
+		onAuthenticationLost: handleAuthenticationLost
 	});
 
 	const status = serverError ?? socket.status;
 
 	function authenticate(nextPassword: string): void {
 		setPassword(nextPassword);
+		savePassword(authMode, nextPassword);
 		setServerError(null);
 		setSessionRequested(true);
 	}
@@ -78,7 +99,12 @@ export function WatchPartyApp() {
 					/>
 
 					<aside className="sidebar">
-						<RequestVideoPanel onSend={send} />
+						<RequestVideoPanel
+							mode={authMode}
+							password={password}
+							onSend={send}
+							onStatusChange={setServerError}
+						/>
 						<RequestsPanel role={role} requests={streamState?.requests ?? []} onSend={send} />
 						<PlaylistPanel
 							role={role}

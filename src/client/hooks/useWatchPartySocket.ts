@@ -7,6 +7,7 @@ type UseWatchPartySocketOptions = {
 	password: string;
 	enabled: boolean;
 	onMessage: (message: ServerMessage) => void;
+	onAuthenticationFailed: (message: string) => void;
 	onAuthenticationLost: () => void;
 };
 
@@ -21,6 +22,7 @@ export function useWatchPartySocket({
 	password,
 	enabled,
 	onMessage,
+	onAuthenticationFailed,
 	onAuthenticationLost
 }: UseWatchPartySocketOptions): UseWatchPartySocketResult {
 	const socketRef = useRef<WebSocket | null>(null);
@@ -109,6 +111,10 @@ export function useWatchPartySocket({
 					setAuthenticatedState(false);
 					stopPing();
 					setStatus(message.message);
+
+					if (isAuthenticationError(message.message)) {
+						onAuthenticationFailed(message.message);
+					}
 				}
 
 				onMessage(message);
@@ -145,6 +151,7 @@ export function useWatchPartySocket({
 	}, [
 		authMode,
 		enabled,
+		onAuthenticationFailed,
 		onAuthenticationLost,
 		onMessage,
 		password,
@@ -167,6 +174,15 @@ function parseServerMessage(raw: unknown): ServerMessage | null {
 	} catch {
 		return null;
 	}
+}
+
+function isAuthenticationError(message: string): boolean {
+	return (
+		message === "Invalid stream password" ||
+		message === "Invalid admin password" ||
+		message === "Stream password is not configured. Add ROOM_PASSWORD to .dev.vars and restart Wrangler." ||
+		message === "Admin password is not configured. Add ADMIN_PASSWORD to .dev.vars and restart Wrangler."
+	);
 }
 
 function isServerMessage(value: unknown): value is ServerMessage {

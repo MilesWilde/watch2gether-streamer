@@ -11,10 +11,12 @@ type UseYouTubePlayerOptions = {
 };
 
 type UseYouTubePlayerResult = {
-	playerContainerRef: RefObject<HTMLDivElement | null>;
+	playerFrameRef: RefObject<HTMLDivElement | null>;
+	playerMountRef: RefObject<HTMLDivElement | null>;
 	volume: number;
 	fullscreen: boolean;
 	setVolume: (volume: number) => void;
+	setPlaybackRate: (playbackRate: number) => void;
 	play: () => void;
 	pause: () => void;
 	toggleFullscreen: () => Promise<void>;
@@ -26,7 +28,8 @@ export function useYouTubePlayer({
 	onSend,
 	onStatusChange
 }: UseYouTubePlayerOptions): UseYouTubePlayerResult {
-	const playerContainerRef = useRef<HTMLDivElement | null>(null);
+	const playerFrameRef = useRef<HTMLDivElement | null>(null);
+	const playerMountRef = useRef<HTMLDivElement | null>(null);
 	const playerRef = useRef<YT.Player | null>(null);
 	const playerReadyRef = useRef(false);
 	const latestStateRef = useRef<StreamState | null>(state);
@@ -132,6 +135,7 @@ export function useYouTubePlayer({
 			currentVideoIdRef.current,
 			playback.playing ? "playing" : "paused",
 			Math.round(playback.positionSec * 10),
+			playback.playbackRate,
 			playback.updatedAtMs
 		].join(":");
 
@@ -141,6 +145,7 @@ export function useYouTubePlayer({
 
 		lastAppliedPlaybackKeyRef.current = playbackKey;
 		suppressPlayerEventsUntilMsRef.current = Date.now() + 1200;
+		player.setPlaybackRate?.(playback.playbackRate);
 
 		if (playback.playing) {
 			seekIfNeeded(player, getSyncedPlaybackPosition(playback), true);
@@ -157,7 +162,7 @@ export function useYouTubePlayer({
 			const nextItem = nextState?.playlist[nextState.currentIndex] ?? null;
 			const player = playerRef.current;
 
-			if (!nextItem) {
+			if (!nextState || !nextItem) {
 				currentVideoIdRef.current = null;
 				lastAppliedPlaybackKeyRef.current = "";
 				stopPlaybackSync();
@@ -217,15 +222,15 @@ export function useYouTubePlayer({
 		const script = document.createElement("script");
 		script.src = "https://www.youtube.com/iframe_api";
 		script.async = true;
-		document.head.append(script);
+		document.head.appendChild(script);
 	}, []);
 
 	useEffect(() => {
-		if (!apiReady || playerRef.current || !playerContainerRef.current) {
+		if (!apiReady || playerRef.current || !playerMountRef.current) {
 			return;
 		}
 
-		playerRef.current = new YT.Player(playerContainerRef.current, {
+		playerRef.current = new YT.Player(playerMountRef.current, {
 			height: "100%",
 			width: "100%",
 			videoId: "",
@@ -300,13 +305,22 @@ export function useYouTubePlayer({
 
 	return useMemo(
 		() => ({
-			playerContainerRef,
+			playerFrameRef,
+			playerMountRef,
 			volume,
 			fullscreen,
 			setVolume: (nextVolume: number) => {
 				const normalizedVolume = normalizeVolume(nextVolume);
 				setVolumeState(normalizedVolume);
 				saveVolume(normalizedVolume);
+			},
+			setPlaybackRate: (playbackRate: number) => {
+				playerRef.current?.setPlaybackRate?.(playbackRate);
+				onSend({
+					type: "set_playback_rate",
+					positionSec: getPlayerTime(),
+					playbackRate
+				});
 			},
 			play: () => {
 				playerRef.current?.playVideo?.();
@@ -327,7 +341,7 @@ export function useYouTubePlayer({
 						return;
 					}
 
-					const element = playerContainerRef.current;
+					const element = playerFrameRef.current;
 
 					if (element?.requestFullscreen) {
 						await element.requestFullscreen();
@@ -349,7 +363,7 @@ function getSyncedPlaybackPosition(playback: PlaybackState): number {
 	}
 
 	const elapsedSec = Math.max(0, Date.now() - playback.updatedAtMs) / 1000;
-	return playback.positionSec + elapsedSec;
+	return playback.positionSec + elapsedSec * playback.playbackRate;
 }
 
 function seekIfNeeded(

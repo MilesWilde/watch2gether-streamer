@@ -5,4 +5,5 @@ export interface Env {
     STREAM: DurableObjectNamespace<StreamRoom>;
     ROOM_PASSWORD?: string;
     ADMIN_PASSWORD?: string;
+    YOUTUBE_API_KEY?: string;
 }

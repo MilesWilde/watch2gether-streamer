@@ -4,7 +4,9 @@ import type { ServerMessage } from "./stream/messages";
 import { parseClientMessage } from "./stream/messages";
 import {
     createEmptyStreamState,
+    createPlaylistItemFromInput,
     createPlaylistItemFromRequest,
+    createVideoRequestFromInput,
     createVideoRequestFromUrl,
     extractYouTubeVideoId,
     moveToNextPlaylistItem,
@@ -109,6 +111,12 @@ export class StreamRoom extends DurableObject<Env> {
                 });
                 break;
 
+            case "request_videos":
+                await this.requireAuthenticatedAsync(socket, async () => {
+                    await this.requestVideos(socket, message.videos);
+                });
+                break;
+
             case "approve_request":
                 await this.requireAdminAsync(socket, async () => {
                     await this.approveRequest(socket, message.requestId);
@@ -142,6 +150,12 @@ export class StreamRoom extends DurableObject<Env> {
             case "pause_video":
                 await this.requireAdminAsync(socket, async () => {
                     await this.setPlayback(false, message.positionSec);
+                });
+                break;
+
+            case "set_playback_rate":
+                await this.requireAdminAsync(socket, async () => {
+                    await this.setPlaybackRate(message.playbackRate, message.positionSec);
                 });
                 break;
 
@@ -254,10 +268,65 @@ export class StreamRoom extends DurableObject<Env> {
             return;
         }
 
-        this.streamState = {
-            ...this.streamState,
-            requests: [...this.streamState.requests, request]
-        };
+        if (this.socketRoles.get(socket) === "admin") {
+            const playlistItem = createPlaylistItemFromRequest(request);
+
+            this.streamState = {
+                ...this.streamState,
+                playlist: [...this.streamState.playlist, playlistItem]
+            };
+        } else {
+            this.streamState = {
+                ...this.streamState,
+                requests: [...this.streamState.requests, request]
+            };
+        }
+
+        await this.saveStreamState();
+        this.broadcastState();
+    }
+
+    private async requestVideos(
+        socket: WebSocket,
+        videos: { url: string; title?: string }[]
+    ): Promise<void> {
+        const role = this.socketRoles.get(socket);
+
+        if (role === "admin") {
+            const playlistItems = videos
+                .map(createPlaylistItemFromInput)
+                .filter((item): item is NonNullable<typeof item> => item !== null);
+
+            if (playlistItems.length === 0) {
+                this.send(socket, {
+                    type: "error",
+                    message: "No valid YouTube videos found."
+                });
+                return;
+            }
+
+            this.streamState = {
+                ...this.streamState,
+                playlist: [...this.streamState.playlist, ...playlistItems]
+            };
+        } else {
+            const requests = videos
+                .map(createVideoRequestFromInput)
+                .filter((item): item is NonNullable<typeof item> => item !== null);
+
+            if (requests.length === 0) {
+                this.send(socket, {
+                    type: "error",
+                    message: "No valid YouTube videos found."
+                });
+                return;
+            }
+
+            this.streamState = {
+                ...this.streamState,
+                requests: [...this.streamState.requests, ...requests]
+            };
+        }
 
         await this.saveStreamState();
         this.broadcastState();
@@ -356,6 +425,7 @@ export class StreamRoom extends DurableObject<Env> {
             playback: {
                 playing: true,
                 positionSec: 0,
+                playbackRate: this.streamState.playback.playbackRate,
                 updatedAtMs: Date.now()
             }
         };
@@ -375,6 +445,7 @@ export class StreamRoom extends DurableObject<Env> {
                 playback: {
                     playing: true,
                     positionSec: 0,
+                    playbackRate: this.streamState.playback.playbackRate,
                     updatedAtMs: Date.now()
                 }
             };
@@ -401,6 +472,29 @@ export class StreamRoom extends DurableObject<Env> {
             playback: {
                 playing,
                 positionSec,
+                playbackRate: this.streamState.playback.playbackRate,
+                updatedAtMs: Date.now()
+            }
+        };
+
+        await this.saveStreamState();
+        this.broadcastState();
+    }
+
+    private async setPlaybackRate(
+        playbackRate: number,
+        positionSec: number
+    ): Promise<void> {
+        if (this.streamState.playlist.length === 0) {
+            return;
+        }
+
+        this.streamState = {
+            ...this.streamState,
+            playback: {
+                ...this.streamState.playback,
+                positionSec,
+                playbackRate,
                 updatedAtMs: Date.now()
             }
         };
@@ -474,8 +568,42 @@ export class StreamRoom extends DurableObject<Env> {
         this.socketRoles.delete(socket);
 
         if (wasAuthenticated) {
+            void this.stopPlaybackWhenEmpty();
             this.broadcastPresence();
         }
+    }
+
+    private async stopPlaybackWhenEmpty(): Promise<void> {
+        if (
+            this.authenticatedSockets.size > 0 ||
+            !this.streamState.playback.playing
+        ) {
+            return;
+        }
+
+        this.streamState = {
+            ...this.streamState,
+            playback: {
+                ...this.streamState.playback,
+                playing: false,
+                positionSec: this.getCurrentPlaybackPosition(),
+                updatedAtMs: Date.now()
+            }
+        };
+
+        await this.saveStreamState();
+    }
+
+    private getCurrentPlaybackPosition(): number {
+        const playback = this.streamState.playback;
+
+        if (!playback.playing) {
+            return playback.positionSec;
+        }
+
+        const elapsedSec = Math.max(0, Date.now() - playback.updatedAtMs) / 1000;
+
+        return playback.positionSec + elapsedSec * playback.playbackRate;
     }
 
     private sendState(socket: WebSocket): void {

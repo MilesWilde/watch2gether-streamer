@@ -3,6 +3,7 @@ export type UserRole = "viewer" | "admin";
 export type PlaybackState = {
     playing: boolean;
     positionSec: number;
+    playbackRate: number;
     updatedAtMs: number;
 };
 
@@ -30,6 +31,11 @@ export type StreamState = {
     playback: PlaybackState;
 };
 
+export type RequestedVideoInput = {
+    url: string;
+    title?: string;
+};
+
 export function createEmptyStreamState(): StreamState {
     return {
         playlist: [],
@@ -43,6 +49,7 @@ export function createStoppedPlaybackState(): PlaybackState {
     return {
         playing: false,
         positionSec: 0,
+        playbackRate: 1,
         updatedAtMs: Date.now()
     };
 }
@@ -143,6 +150,10 @@ export function createVideoRequestFromUrl(
     };
 }
 
+export function createVideoRequestFromInput(input: RequestedVideoInput): VideoRequest | null {
+    return createVideoRequestFromUrl(input.url, input.title);
+}
+
 export function createPlaylistItemFromRequest(request: VideoRequest): PlaylistItem {
     return {
         id: crypto.randomUUID(),
@@ -151,6 +162,14 @@ export function createPlaylistItemFromRequest(request: VideoRequest): PlaylistIt
         originalUrl: request.originalUrl,
         title: request.title
     };
+}
+
+export function createPlaylistItemFromInput(
+    input: RequestedVideoInput
+): PlaylistItem | null {
+    const request = createVideoRequestFromInput(input);
+
+    return request ? createPlaylistItemFromRequest(request) : null;
 }
 
 export function extractYouTubeVideoId(input: string): string | null {
@@ -227,6 +246,7 @@ function normalizePlaybackState(value: PlaybackState | undefined): PlaybackState
             typeof value.positionSec === "number" && Number.isFinite(value.positionSec)
                 ? Math.max(0, value.positionSec)
                 : 0,
+        playbackRate: normalizePlaybackRate(value.playbackRate),
         updatedAtMs:
             typeof value.updatedAtMs === "number" && Number.isFinite(value.updatedAtMs)
                 ? value.updatedAtMs
@@ -236,4 +256,16 @@ function normalizePlaybackState(value: PlaybackState | undefined): PlaybackState
 
 function isValidYouTubeId(value: string | null | undefined): value is string {
     return typeof value === "string" && /^[a-zA-Z0-9_-]{11}$/.test(value);
+}
+
+export function normalizePlaybackRate(value: unknown): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return 1;
+    }
+
+    if ([0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].includes(value)) {
+        return value;
+    }
+
+    return 1;
 }
