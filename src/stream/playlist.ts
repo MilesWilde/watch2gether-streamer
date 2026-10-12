@@ -45,11 +45,11 @@ export function createEmptyStreamState(): StreamState {
     };
 }
 
-export function createStoppedPlaybackState(): PlaybackState {
+export function createStoppedPlaybackState(playbackRate = 1): PlaybackState {
     return {
         playing: false,
         positionSec: 0,
-        playbackRate: 1,
+        playbackRate,
         updatedAtMs: Date.now()
     };
 }
@@ -75,14 +75,14 @@ export function moveToNextPlaylistItem(state: StreamState): StreamState {
         return {
             ...state,
             currentIndex: 0,
-            playback: createStoppedPlaybackState()
+            playback: createStoppedPlaybackState(state.playback.playbackRate)
         };
     }
 
     return {
         ...state,
         currentIndex: (state.currentIndex + 1) % state.playlist.length,
-        playback: createStoppedPlaybackState()
+        playback: createStoppedPlaybackState(state.playback.playbackRate)
     };
 }
 
@@ -103,7 +103,7 @@ export function removePlaylistItem(
             ...state,
             playlist: [],
             currentIndex: 0,
-            playback: createStoppedPlaybackState()
+            playback: createStoppedPlaybackState(state.playback.playbackRate)
         };
     }
 
@@ -114,7 +114,7 @@ export function removePlaylistItem(
             ...state,
             playlist: nextPlaylist,
             currentIndex: Math.min(removeIndex, nextPlaylist.length - 1),
-            playback: createStoppedPlaybackState()
+            playback: createStoppedPlaybackState(state.playback.playbackRate)
         };
     }
 

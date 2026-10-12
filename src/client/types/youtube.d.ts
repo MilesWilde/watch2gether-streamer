@@ -66,6 +66,7 @@ declare global {
 		}
 
 		const PlayerState: {
+			CUED: number;
 			PLAYING: number;
 			PAUSED: number;
 			ENDED: number;

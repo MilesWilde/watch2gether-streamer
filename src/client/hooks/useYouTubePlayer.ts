@@ -35,6 +35,12 @@ export function useYouTubePlayer({
 	const latestStateRef = useRef<StreamState | null>(state);
 	const roleRef = useRef<UserRole>(role);
 	const currentVideoIdRef = useRef<string | null>(null);
+	const currentPlaylistItemIdRef = useRef<string | null>(null);
+	const pendingAdvancementRef = useRef<{
+		updatedAtMs: number;
+		positionSec: number;
+		replacementQueued: boolean;
+	} | null>(null);
 	const lastAppliedPlaybackKeyRef = useRef("");
 	const lastSentPlaybackKeyRef = useRef("");
 	const suppressPlayerEventsUntilMsRef = useRef(0);
@@ -164,6 +170,8 @@ export function useYouTubePlayer({
 
 			if (!nextState || !nextItem) {
 				currentVideoIdRef.current = null;
+				currentPlaylistItemIdRef.current = null;
+				pendingAdvancementRef.current = null;
 				lastAppliedPlaybackKeyRef.current = "";
 				stopPlaybackSync();
 				player?.stopVideo?.();
@@ -180,9 +188,25 @@ export function useYouTubePlayer({
 				return;
 			}
 
-			if (currentVideoIdRef.current !== nextItem.videoId) {
+			const pendingAdvancement = pendingAdvancementRef.current;
+			// A single-item loop keeps its identity, but the server resets its playback position.
+			const restartingAfterEnd = pendingAdvancement !== null && !pendingAdvancement.replacementQueued &&
+				nextState.playback.updatedAtMs !== pendingAdvancement.updatedAtMs &&
+				(nextState.playback.positionSec === 0 ||
+					nextState.playback.positionSec < pendingAdvancement.positionSec);
+
+			if (
+				currentVideoIdRef.current !== nextItem.videoId ||
+				currentPlaylistItemIdRef.current !== nextItem.id || restartingAfterEnd
+			) {
 				currentVideoIdRef.current = nextItem.videoId;
+				currentPlaylistItemIdRef.current = nextItem.id;
+				if (pendingAdvancement) {
+					pendingAdvancement.replacementQueued = true;
+				}
 				lastAppliedPlaybackKeyRef.current = "";
+				lastSentPlaybackKeyRef.current = "";
+				suppressPlayerEventsUntilMsRef.current = Date.now() + 1200;
 
 				if (nextState.playback.playing) {
 					player.loadVideoById({
@@ -241,14 +265,53 @@ export function useYouTubePlayer({
 				rel: 0
 			},
 			events: {
-				onReady: () => {
+				onReady: (event) => {
+					if (event.target !== playerRef.current) {
+						return;
+					}
+
 					playerReadyRef.current = true;
 					setPlayerReady(true);
 					applyLocalVolume();
 					renderCurrentVideo(latestStateRef.current);
 				},
 				onStateChange: (event) => {
-					if (roleRef.current !== "admin" || Date.now() < suppressPlayerEventsUntilMsRef.current) {
+					if (event.target !== playerRef.current || !playerReadyRef.current) {
+						return;
+					}
+
+					const latestState = latestStateRef.current;
+
+					// Loading/cueing resets iframe speed even when the shared state is unchanged.
+					if (
+						latestState && currentVideoIdRef.current &&
+						(event.data === YT.PlayerState.CUED || event.data === YT.PlayerState.PLAYING)
+					) {
+						event.target.setPlaybackRate?.(latestState.playback.playbackRate);
+					}
+
+					if (roleRef.current !== "admin") {
+						return;
+					}
+
+					// Keep delayed ENDED events blocked until the replacement actually starts.
+					if (event.data === YT.PlayerState.PLAYING && pendingAdvancementRef.current?.replacementQueued) {
+						pendingAdvancementRef.current = null;
+					}
+
+					if (event.data === YT.PlayerState.ENDED) {
+						if (currentVideoIdRef.current && latestState && !pendingAdvancementRef.current) {
+							pendingAdvancementRef.current = {
+								updatedAtMs: latestState.playback.updatedAtMs,
+								positionSec: getPlayerTime(),
+								replacementQueued: false
+							};
+							onSend({ type: "next_video" });
+						}
+						return;
+					}
+
+					if (Date.now() < suppressPlayerEventsUntilMsRef.current) {
 						return;
 					}
 
@@ -261,17 +324,13 @@ export function useYouTubePlayer({
 						sendPlaybackUpdate(false);
 						return;
 					}
-
-					if (event.data === YT.PlayerState.ENDED) {
-						onSend({ type: "next_video" });
-					}
 				},
 				onError: (event) => {
 					onStatusChange(`YouTube error ${event.data}`);
 				}
 			}
 		});
-	}, [apiReady, applyLocalVolume, onSend, onStatusChange, renderCurrentVideo, sendPlaybackUpdate]);
+	}, [apiReady, applyLocalVolume, getPlayerTime, onSend, onStatusChange, renderCurrentVideo, sendPlaybackUpdate]);
 
 	useEffect(() => {
 		renderCurrentVideo(state);
@@ -298,8 +357,10 @@ export function useYouTubePlayer({
 	useEffect(() => {
 		return () => {
 			stopPlaybackSync();
-			playerRef.current?.destroy?.();
+			const player = playerRef.current;
+			playerReadyRef.current = false;
 			playerRef.current = null;
+			player?.destroy?.();
 		};
 	}, [stopPlaybackSync]);
 
@@ -315,6 +376,10 @@ export function useYouTubePlayer({
 				saveVolume(normalizedVolume);
 			},
 			setPlaybackRate: (playbackRate: number) => {
+				if (roleRef.current !== "admin") {
+					return;
+				}
+
 				playerRef.current?.setPlaybackRate?.(playbackRate);
 				onSend({
 					type: "set_playback_rate",

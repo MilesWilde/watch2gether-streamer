@@ -1,3 +1,4 @@
+import { normalizeChatName, parseChatInput, type ChatMessage, type ChatSnapshot } from "./chat";
 import {
     normalizePlaybackRate,
     type RequestedVideoInput,
@@ -9,7 +10,34 @@ export type AuthenticateClientMessage = {
     type: "authenticate";
     password: string;
     mode: UserRole;
+    name?: string;
 };
+
+export type SetNameClientMessage = { type: "set_name"; name: string };
+export type SendChatClientMessage = { type: "send_chat"; text: string; gifId?: string; requestId?: string };
+
+export type ChatResultServerMessage = {
+	type: "chat_result";
+	requestId: string;
+	accepted: boolean;
+	message?: string;
+};
+
+export function isChatRequestId(value: unknown): value is string {
+	return typeof value === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(value);
+}
+
+// Recover correlation even when chat content fails validation, never from other commands.
+export function getChatRequestId(raw: unknown): string | undefined {
+	try {
+		const input: unknown = JSON.parse(String(raw));
+		if (typeof input === "object" && input !== null && "type" in input &&
+			input.type === "send_chat" && "requestId" in input && isChatRequestId(input.requestId)) {
+			return input.requestId;
+		}
+	} catch { /* Invalid JSON cannot be correlated safely. */ }
+	return undefined;
+}
 
 export type PingClientMessage = {
     type: "ping";
@@ -71,6 +99,8 @@ export type ClearRoomClientMessage = {
 
 export type ClientMessage =
     | AuthenticateClientMessage
+    | SetNameClientMessage
+    | SendChatClientMessage
     | PingClientMessage
     | RequestVideoClientMessage
     | RequestVideosClientMessage
@@ -113,6 +143,10 @@ export type ErrorServerMessage = {
 
 export type ServerMessage =
     | AuthenticatedServerMessage
+    | ChatResultServerMessage
+    | { type: "chat_history"; chat: ChatSnapshot }
+    | { type: "chat_message"; message: ChatMessage }
+    | { type: "name_updated"; name: string }
     | PresenceServerMessage
     | StateServerMessage
     | PongServerMessage
@@ -120,10 +154,22 @@ export type ServerMessage =
 
 export function parseClientMessage(raw: unknown): ClientMessage | null {
     try {
-        const parsed = JSON.parse(String(raw));
+        const parsed: unknown = JSON.parse(String(raw));
 
         if (typeof parsed !== "object" || parsed === null || !("type" in parsed)) {
             return null;
+        }
+
+        const input = parsed as Record<string, unknown>;
+
+        if (parsed.type === "set_name" && typeof input.name === "string") {
+            return { type: "set_name", name: normalizeChatName(input.name) };
+        }
+
+        if (parsed.type === "send_chat") {
+            if ("requestId" in input && !isChatRequestId(input.requestId)) return null;
+            const chat = parseChatInput(input.text, input.gifId);
+            return chat ? { type: "send_chat", ...chat, ...(isChatRequestId(input.requestId) ? { requestId: input.requestId } : {}) } : null;
         }
 
         if (
@@ -136,7 +182,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
             return {
                 type: "authenticate",
                 password: parsed.password,
-                mode: parsed.mode
+                mode: parsed.mode,
+                ...(typeof input.name === "string" ? { name: normalizeChatName(input.name) } : {})
             };
         }
 
@@ -162,7 +209,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
             "videos" in parsed &&
             Array.isArray(parsed.videos)
         ) {
-            const videos = parsed.videos
+            const videos = (parsed.videos as unknown[])
                 .map(parseRequestedVideoInput)
                 .filter((item): item is RequestedVideoInput => item !== null)
                 .slice(0, 200);

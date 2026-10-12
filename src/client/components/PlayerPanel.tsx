@@ -1,6 +1,7 @@
 import type { ClientMessage } from "../../stream/messages";
 import type { StreamState, UserRole } from "../../stream/playlist";
 import { useYouTubePlayer } from "../hooks/useYouTubePlayer";
+import { Maximize, Minimize, Pause, Play, SkipForward, Trash2, Volume2 } from 'lucide-react';
 
 const playbackRates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -50,17 +51,17 @@ export function PlayerPanel({
 			<div className="transport">
 				{isAdmin ? (
 					<>
-						<button type="button" disabled={!currentItem} onClick={player.play}>
-							Play
+						<button type="button" className="icon-button" title="Play" aria-label="Play" disabled={!currentItem} onClick={player.play}>
+							<Play size={18} />
 						</button>
-						<button type="button" disabled={!currentItem} onClick={player.pause}>
-							Pause
+						<button type="button" className="icon-button secondary-button" title="Pause" aria-label="Pause" disabled={!currentItem} onClick={player.pause}>
+							<Pause size={18} />
 						</button>
-						<button type="button" onClick={() => onSend({ type: "next_video" })}>
-							Next
+						<button type="button" className="icon-button secondary-button" title="Next video" aria-label="Next video" onClick={() => onSend({ type: "next_video" })}>
+							<SkipForward size={18} />
 						</button>
-						<button type="button" className="danger-button" onClick={clearRoom}>
-							Clear
+						<button type="button" className="icon-button danger-button" title="Clear room" aria-label="Clear room" onClick={clearRoom}>
+							<Trash2 size={18} />
 						</button>
 						<label className="speed-control" htmlFor="playbackRate">
 							Speed
@@ -83,7 +84,7 @@ export function PlayerPanel({
 				) : null}
 
 				<label className="volume-control" htmlFor="volumeInput">
-					Volume
+					<Volume2 size={18} aria-hidden="true" /><span className="sr-only">Volume</span>
 					<input
 						id="volumeInput"
 						type="range"
@@ -96,12 +97,18 @@ export function PlayerPanel({
 
 				<button
 					type="button"
-					className="secondary-button"
+					className="icon-button secondary-button"
+					title={player.fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+					aria-label={player.fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
 					disabled={!currentItem}
 					onClick={player.toggleFullscreen}
 				>
-					{player.fullscreen ? "Exit fullscreen" : "Fullscreen"}
+					{player.fullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
 				</button>
+			</div>
+			<div className="now-playing">
+				<span>Now playing</span>
+				<p title={currentItem?.title}>{currentItem?.title ?? 'No video selected'}</p>
 			</div>
 		</section>
 	);

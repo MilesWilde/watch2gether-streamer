@@ -85,3 +85,8 @@ npx tsc --noEmit   # type-check
 - Playlist imports preview up to 200 public videos before submitting requests.
 - Viewer playback controls are disabled so only the admin controls shared playback.
 - Browser autoplay policies can still require viewers to interact with the page before audio playback works.
+- The room layout prioritizes the video, moving chat and queue panels below it on narrower windows.
+- Chat messages remain available while at least one authenticated participant stays in the room. When the last participant leaves, the chat session and its history reset.
+- Browser chat caches are scoped to the current room session and cleared on leaving. Your preferred display name is saved separately and supports emoji.
+- The chat picker includes emoji and a curated selection of GIFs; GIF images load from an external media host.
+- The admin-selected playback speed carries over when videos change, including when the queue is cleared and refilled.
