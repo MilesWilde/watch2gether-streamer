@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import type { ClientMessage } from "../../stream/messages";
 import type { ChatMessage } from '../../stream/chat';
 import type { StreamState, UserRole } from "../../stream/playlist";
 import { useYouTubePlayer } from "../hooks/useYouTubePlayer";
+import { useChatViewportHeight } from '../hooks/useChatViewportHeight';
 import { Maximize, Minimize, PanelTop, Pause, Play, SkipForward, Trash2, Volume2 } from 'lucide-react';
 import type { WatchPreferences } from '../lib/watchPreferences';
 import { ChatOverlay } from './ChatOverlay';
@@ -37,6 +38,8 @@ export function PlayerPanel({
 	const currentItem = state?.playlist[state.currentIndex] ?? null;
 	const isAdmin = role === "admin";
 	const [seekDraft, setSeekDraft] = useState<{ itemId: string; position: number } | null>(null);
+	const chatRef = useRef<HTMLDivElement>(null);
+	useChatViewportHeight(chatRef);
 	const player = useYouTubePlayer({
 		role,
 		state,
@@ -70,7 +73,7 @@ export function PlayerPanel({
 				</div>
 				{currentItem && preferences.chatOverlay && <ChatOverlay messages={chatMessages} opacity={preferences.overlayOpacity} side={preferences.overlaySide} />}
 			</div>
-			<div className="player-chat">{children}</div>
+			<div ref={chatRef} className="player-chat">{children}</div>
 
 			<div className="player-timeline">
 				{isAdmin && <input type="range" min="0" max={seekAvailable ? player.duration : 1} step="1" value={Math.min(seekPosition ?? 0, player.duration || 1)} disabled={!seekAvailable} aria-label="Seek video" aria-valuetext={formatPlaybackTime(seekPosition ?? 0)}

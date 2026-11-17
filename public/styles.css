@@ -735,18 +735,15 @@ textarea:focus-visible,
 .player-video { grid-area: video; position: relative; min-width: 0; align-self: start; }
 .player-chat { grid-area: chat; min-width: 0; }
 .chat-overlay {
-	/* Cap the inset to leave room for the feed on its selected side. */
-	--chat-overlay-width: min(320px, calc(100% - 24px));
-	--chat-overlay-inset-x: clamp(12px, 20vw, calc((100% - var(--chat-overlay-width)) * 0.4));
 	position: absolute;
-	top: 12px;
-	bottom: 12px;
-	left: var(--chat-overlay-inset-x);
+	top: 10%;
+	bottom: 10%;
+	left: 10%;
 	z-index: 1;
 	display: flex;
 	flex-direction: column;
 	gap: 0.5rem;
-	width: var(--chat-overlay-width);
+	width: min(320px, 80%);
 	overflow: hidden;
 	background: transparent;
 	pointer-events: none;
@@ -756,7 +753,7 @@ textarea:focus-visible,
 	line-height: 1.5;
 	text-shadow: 0 1px 3px #000, 0 0 4px #000;
 }
-.chat-overlay[data-side="right"] { left: auto; right: var(--chat-overlay-inset-x); }
+.chat-overlay[data-side="right"] { left: auto; right: 10%; }
 .chat-overlay-message { flex: 0 0 auto; min-width: 0; max-height: 9rem; overflow: hidden; overflow-wrap: anywhere; transition: opacity 250ms linear; }
 .chat-overlay-message strong { font-size: 0.8rem; }
 .chat-overlay-message p { margin: 0; white-space: pre-wrap; }
@@ -811,7 +808,8 @@ textarea:focus-visible,
 	.player-panel[data-chat-side="left"] { grid-template-columns: 320px minmax(0, 1fr); grid-template-areas: "chat video" "chat timeline" "chat transport" "chat title"; }
 	/* Fill the player's rows without letting chat history determine their height. */
 	.player-chat { position: relative; min-height: 0; }
-	.player-chat .chat-panel { position: absolute; inset: 0; margin: 0; height: auto; min-height: 0; border-top: 0; border-left: 1px solid #34383e; padding: 0 0 0 1rem; }
+	.player-chat .chat-panel { position: absolute; inset: 0; margin: 0; height: auto; max-height: var(--chat-viewport-height, none); min-height: 0; border-top: 0; border-left: 1px solid #34383e; padding: 0 0 0 1rem; }
+	.player-chat .chat-panel[data-viewport-overflow] { overflow-y: auto; }
 	.player-panel[data-chat-side="left"] .chat-panel { border-left: 0; border-right: 1px solid #34383e; padding: 0 1rem 0 0; }
 	.theater-mode .player-video { height: min(75vw, calc(100dvh - 220px)); min-height: 300px; }
 	.theater-mode .youtube-player, .theater-mode .player-placeholder { height: 100%; aspect-ratio: auto; }
