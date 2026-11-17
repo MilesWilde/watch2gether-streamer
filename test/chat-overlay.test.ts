@@ -43,7 +43,7 @@ describe('recent chat mirrored over the video', () => {
 	}
 	function render(opacity = 60) {
 		hooks.index = 0;
-		const tree = ChatOverlay({ messages, opacity });
+		const tree = ChatOverlay({ messages, opacity, side: 'left' });
 		for (const effect of hooks.effects.splice(0)) effect();
 		return tree;
 	}
@@ -80,11 +80,11 @@ describe('recent chat mirrored over the video', () => {
 		expect(messages).toEqual([message('new')]);
 		expect(vi.getTimerCount()).toBe(0);
 	});
-	it('shows at most five recent messages with the newest first', () => {
+	it('keeps recent messages available to fill the video height with the newest first', () => {
 		messages = Array.from({ length: 9 }, (_, i) => message(String(i), 99000 + i));
 		const visible = rows(render());
-		expect(visible).toHaveLength(5);
-		expect(visible.map(row => row.key)).toEqual(['room:8', 'room:7', 'room:6', 'room:5', 'room:4']);
+		expect(visible).toHaveLength(9);
+		expect(visible.map(row => row.key)).toEqual(['room:8', 'room:7', 'room:6', 'room:5', 'room:4', 'room:3', 'room:2', 'room:1', 'room:0']);
 		expect(messages).toHaveLength(9);
 	});
 	it('keeps old history and invalid timestamps out of the overlay', () => {

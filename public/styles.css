@@ -732,21 +732,21 @@ textarea:focus-visible,
 	align-content: start;
 	background: #101114;
 }
-.player-video { grid-area: video; position: relative; min-width: 0; }
+.player-video { grid-area: video; position: relative; min-width: 0; align-self: start; }
 .player-chat { grid-area: chat; min-width: 0; }
 .chat-overlay {
-	/* Match the screen inset while keeping the feed inside smaller players. */
-	--chat-overlay-inset-x: min(20vw, 40%);
-	--chat-overlay-inset-y: min(20vh, 40%);
+	/* Cap the inset to leave room for the feed on its selected side. */
+	--chat-overlay-width: min(320px, calc(100% - 24px));
+	--chat-overlay-inset-x: clamp(12px, 20vw, calc((100% - var(--chat-overlay-width)) * 0.4));
 	position: absolute;
-	top: var(--chat-overlay-inset-y);
+	top: 12px;
+	bottom: 12px;
 	left: var(--chat-overlay-inset-x);
 	z-index: 1;
 	display: flex;
 	flex-direction: column;
 	gap: 0.5rem;
-	width: min(320px, calc(100% - var(--chat-overlay-inset-x) - 12px));
-	max-height: min(65%, calc(100% - var(--chat-overlay-inset-y) - 12px));
+	width: var(--chat-overlay-width);
 	overflow: hidden;
 	background: transparent;
 	pointer-events: none;
@@ -756,6 +756,7 @@ textarea:focus-visible,
 	line-height: 1.5;
 	text-shadow: 0 1px 3px #000, 0 0 4px #000;
 }
+.chat-overlay[data-side="right"] { left: auto; right: var(--chat-overlay-inset-x); }
 .chat-overlay-message { flex: 0 0 auto; min-width: 0; max-height: 9rem; overflow: hidden; overflow-wrap: anywhere; transition: opacity 250ms linear; }
 .chat-overlay-message strong { font-size: 0.8rem; }
 .chat-overlay-message p { margin: 0; white-space: pre-wrap; }
@@ -797,6 +798,9 @@ textarea:focus-visible,
 .watch-setting-toggle { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 0; font-size: 0.9rem; cursor: pointer; }
 .watch-setting-toggle input { flex: 0 0 1rem; margin: 0; }
 .watch-setting-toggle kbd { margin-left: 0.5rem; padding: 0.1rem 0.35rem; border: 1px solid #545c69; border-radius: 3px; color: #c7ccd8; font-size: 0.75rem; }
+.watch-setting-position { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.5rem 0; font-size: 0.8rem; }
+.watch-setting-position select { width: auto; min-width: 6rem; }
+.watch-setting-position select:disabled { opacity: 0.54; cursor: not-allowed; }
 .watch-setting-opacity { display: grid; gap: 0.5rem; padding-top: 0.5rem; font-size: 0.8rem; }
 .watch-setting-opacity > span { display: flex; justify-content: space-between; gap: 0.5rem; }
 .watch-setting-opacity output { font-variant-numeric: tabular-nums; }

@@ -2,12 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { defaultWatchPreferences, isTheaterShortcut, readWatchPreferences, writeWatchPreferences } from '../src/client/lib/watchPreferences';
 
 describe('local viewing preferences', () => {
-	it('restores overlay and theater choices without sharing them with the room', () => {
+	it.each(['left', 'right'] as const)('restores the %s overlay position with opacity and theater choices', overlaySide => {
 		const values = new Map<string, string>();
 		const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
-		const preferences = { chatOverlay: false, overlayOpacity: 28, theater: true };
+		const preferences = { chatOverlay: false, overlayOpacity: 28, overlaySide, theater: true };
 		writeWatchPreferences(preferences, storage);
 		expect(readWatchPreferences(storage)).toEqual(preferences);
+		expect(JSON.parse(storage.getItem('watchparty-viewing-preferences')!)).toEqual({ version: 1, ...preferences });
+	});
+
+	it.each([undefined, null, 'center', 'LEFT', 1, true, {}])('defaults legacy or invalid overlay position %j to left while preserving other choices', overlaySide => {
+		const saved = JSON.stringify({ version: 1, chatOverlay: false, overlayOpacity: 28, overlaySide, theater: true });
+		expect(readWatchPreferences({ getItem: () => saved })).toEqual({ chatOverlay: false, overlayOpacity: 28, overlaySide: 'left', theater: true });
 	});
 
 	it.each([null, '{', 'null', '[]', '{"version":2}', '{"version":1,"chatOverlay":"false","overlayOpacity":"20","theater":1}'])('uses defaults for invalid saved preferences %s', raw => {
