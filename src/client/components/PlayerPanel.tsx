@@ -62,7 +62,7 @@ export function PlayerPanel({
 	}
 
 	return (
-		<div ref={player.playerFrameRef} className="player-panel" role="region" aria-label="Video player">
+		<div ref={player.playerFrameRef} className="player-panel" data-chat-side={preferences.chatSide} role="region" aria-label="Video player">
 			<div className="player-video">
 				{currentItem ? null : <div className="player-placeholder">No video selected</div>}
 				<div className={currentItem ? "youtube-player" : "youtube-player hidden"} inert={!connected}>

@@ -2,18 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { defaultWatchPreferences, isTheaterShortcut, readWatchPreferences, writeWatchPreferences } from '../src/client/lib/watchPreferences';
 
 describe('local viewing preferences', () => {
-	it.each(['left', 'right'] as const)('restores the %s overlay position with opacity and theater choices', overlaySide => {
+	it.each([
+		['left', 'left'], ['left', 'right'], ['right', 'left'], ['right', 'right'],
+	] as const)('restores overlay %s and sidebar %s independently with opacity and theater choices', (overlaySide, chatSide) => {
 		const values = new Map<string, string>();
 		const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
-		const preferences = { chatOverlay: false, overlayOpacity: 28, overlaySide, theater: true };
+		const preferences = { chatOverlay: false, overlayOpacity: 28, overlaySide, chatSide, theater: true };
 		writeWatchPreferences(preferences, storage);
 		expect(readWatchPreferences(storage)).toEqual(preferences);
 		expect(JSON.parse(storage.getItem('watchparty-viewing-preferences')!)).toEqual({ version: 1, ...preferences });
 	});
 
 	it.each([undefined, null, 'center', 'LEFT', 1, true, {}])('defaults legacy or invalid overlay position %j to left while preserving other choices', overlaySide => {
-		const saved = JSON.stringify({ version: 1, chatOverlay: false, overlayOpacity: 28, overlaySide, theater: true });
-		expect(readWatchPreferences({ getItem: () => saved })).toEqual({ chatOverlay: false, overlayOpacity: 28, overlaySide: 'left', theater: true });
+		const saved = JSON.stringify({ version: 1, chatOverlay: false, overlayOpacity: 28, overlaySide, chatSide: 'left', theater: true });
+		expect(readWatchPreferences({ getItem: () => saved })).toEqual({ chatOverlay: false, overlayOpacity: 28, overlaySide: 'left', chatSide: 'left', theater: true });
+	});
+
+	it.each([undefined, null, 'center', 'RIGHT', 1, true, {}])('defaults legacy or invalid sidebar position %j to right while preserving other choices', chatSide => {
+		const saved = JSON.stringify({ version: 1, chatOverlay: false, overlayOpacity: 28, overlaySide: 'right', chatSide, theater: true });
+		expect(readWatchPreferences({ getItem: () => saved })).toEqual({ chatOverlay: false, overlayOpacity: 28, overlaySide: 'right', chatSide: 'right', theater: true });
 	});
 
 	it.each([null, '{', 'null', '[]', '{"version":2}', '{"version":1,"chatOverlay":"false","overlayOpacity":"20","theater":1}'])('uses defaults for invalid saved preferences %s', raw => {

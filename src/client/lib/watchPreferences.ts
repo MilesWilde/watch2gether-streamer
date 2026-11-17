@@ -2,6 +2,7 @@ export type WatchPreferences = {
 	chatOverlay: boolean;
 	overlayOpacity: number;
 	overlaySide: 'left' | 'right';
+	chatSide: 'left' | 'right';
 	theater: boolean;
 };
 
@@ -9,6 +10,7 @@ export const defaultWatchPreferences: Readonly<WatchPreferences> = {
 	chatOverlay: true,
 	overlayOpacity: 55,
 	overlaySide: 'left',
+	chatSide: 'right',
 	theater: false,
 };
 
@@ -25,6 +27,7 @@ function normalize(value: unknown): WatchPreferences {
 		chatOverlay: typeof input.chatOverlay === 'boolean' ? input.chatOverlay : defaultWatchPreferences.chatOverlay,
 		overlayOpacity: typeof input.overlayOpacity === 'number' && Number.isFinite(input.overlayOpacity) ? Math.max(0, Math.min(100, Math.round(input.overlayOpacity))) : defaultWatchPreferences.overlayOpacity,
 		overlaySide: input.overlaySide === 'left' || input.overlaySide === 'right' ? input.overlaySide : defaultWatchPreferences.overlaySide,
+		chatSide: input.chatSide === 'left' || input.chatSide === 'right' ? input.chatSide : defaultWatchPreferences.chatSide,
 		theater: typeof input.theater === 'boolean' ? input.theater : defaultWatchPreferences.theater,
 	};
 }

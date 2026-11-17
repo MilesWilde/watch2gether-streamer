@@ -43,7 +43,7 @@ export function WatchSettings({ preferences, onChange, notificationsEnabled, onT
 			document.removeEventListener('fullscreenchange', positionPanel);
 			document.removeEventListener('webkitfullscreenchange', positionPanel);
 		};
-	}, [open, preferences.chatOverlay, preferences.theater]);
+	}, [open, preferences.chatOverlay, preferences.chatSide, preferences.theater]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -76,7 +76,9 @@ export function WatchSettings({ preferences, onChange, notificationsEnabled, onT
 			<label className="watch-setting-toggle"><span>Chat over video</span><input ref={firstControlRef} type="checkbox" checked={preferences.chatOverlay} onChange={event => onChange({ chatOverlay: event.currentTarget.checked })} /></label>
 			<label className="watch-setting-position"><span>Overlay position</span><select value={preferences.overlaySide} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlaySide: event.currentTarget.value === 'right' ? 'right' : 'left' })}><option value="left">Left</option><option value="right">Right</option></select></label>
 			<label className="watch-setting-opacity"><span>Overlay text opacity <output>{preferences.overlayOpacity}%</output></span><input type="range" min="0" max="100" step="1" value={preferences.overlayOpacity} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlayOpacity: Number(event.currentTarget.value) })} /></label>
-			<p className="watch-setting-help">Recent messages appear on the selected side of the video and fade away. Full chat stays beside the video, or below on small screens. Your view is saved on this browser.</p>
+			<p className="watch-setting-help">Recent messages appear on the selected side of the video and fade away.</p>
+			<label className="watch-setting-position"><span>Chat sidebar position</span><select value={preferences.chatSide} onChange={event => onChange({ chatSide: event.currentTarget.value === 'left' ? 'left' : 'right' })}><option value="left">Left</option><option value="right">Right</option></select></label>
+			<p className="watch-setting-help">Sidebar and overlay positions are independent. Full chat stays below the video on small screens. Your view is saved on this browser.</p>
 			<label className="watch-setting-toggle"><span>Theater mode <kbd>T</kbd></span><input type="checkbox" checked={preferences.theater} onChange={event => onChange({ theater: event.currentTarget.checked })} /></label>
 			<label className="watch-setting-toggle"><span>Chat notifications</span><input type="checkbox" checked={notificationsEnabled} onChange={onToggleNotifications} /></label>
 		</section>}
