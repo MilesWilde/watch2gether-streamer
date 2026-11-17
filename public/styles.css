@@ -735,15 +735,18 @@ textarea:focus-visible,
 .player-video { grid-area: video; position: relative; min-width: 0; }
 .player-chat { grid-area: chat; min-width: 0; }
 .chat-overlay {
+	/* Match the screen inset while keeping the feed inside smaller players. */
+	--chat-overlay-inset-x: min(20vw, 40%);
+	--chat-overlay-inset-y: min(20vh, 40%);
 	position: absolute;
-	top: 12px;
-	left: 12px;
+	top: var(--chat-overlay-inset-y);
+	left: var(--chat-overlay-inset-x);
 	z-index: 1;
 	display: flex;
 	flex-direction: column;
 	gap: 0.5rem;
-	width: min(320px, calc(100% - 24px));
-	max-height: 65%;
+	width: min(320px, calc(100% - var(--chat-overlay-inset-x) - 12px));
+	max-height: min(65%, calc(100% - var(--chat-overlay-inset-y) - 12px));
 	overflow: hidden;
 	background: transparent;
 	pointer-events: none;
