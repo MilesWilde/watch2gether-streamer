@@ -1,9 +1,11 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { ClientMessage } from "../../stream/messages";
+import type { ChatMessage } from '../../stream/chat';
 import type { StreamState, UserRole } from "../../stream/playlist";
 import { useYouTubePlayer } from "../hooks/useYouTubePlayer";
 import { Maximize, Minimize, PanelTop, Pause, Play, SkipForward, Trash2, Volume2 } from 'lucide-react';
 import type { WatchPreferences } from '../lib/watchPreferences';
+import { ChatOverlay } from './ChatOverlay';
 
 const playbackRates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -17,6 +19,7 @@ type PlayerPanelProps = {
 	onToggleTheater: () => void;
 	settings: ReactNode;
 	children: ReactNode;
+	chatMessages?: ChatMessage[];
 };
 
 export function PlayerPanel({
@@ -28,7 +31,8 @@ export function PlayerPanel({
 	preferences,
 	onToggleTheater,
 	settings,
-	children
+	children,
+	chatMessages = []
 }: PlayerPanelProps) {
 	const currentItem = state?.playlist[state.currentIndex] ?? null;
 	const isAdmin = role === "admin";
@@ -58,12 +62,13 @@ export function PlayerPanel({
 	}
 
 	return (
-		<div ref={player.playerFrameRef} className={`player-panel${preferences.chatOverlay && currentItem ? ' chat-overlay-enabled' : ''}`} role="region" aria-label="Video player" style={{ '--chat-overlay-opacity': preferences.overlayOpacity / 100 } as CSSProperties}>
+		<div ref={player.playerFrameRef} className="player-panel" role="region" aria-label="Video player">
 			<div className="player-video">
 				{currentItem ? null : <div className="player-placeholder">No video selected</div>}
 				<div className={currentItem ? "youtube-player" : "youtube-player hidden"} inert={!connected}>
 					<div ref={player.playerMountRef} className="youtube-player-mount" />
 				</div>
+				{currentItem && preferences.chatOverlay && <ChatOverlay messages={chatMessages} opacity={preferences.overlayOpacity} />}
 			</div>
 			<div className="player-chat">{children}</div>
 

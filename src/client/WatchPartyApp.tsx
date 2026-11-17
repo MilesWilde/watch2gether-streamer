@@ -166,7 +166,7 @@ export function WatchPartyApp() {
 				<div className="room-content">
 					<section className="layout" aria-label="Watch room">
 						<PlayerPanel role={role} state={streamState} connected={controlsReady} onSend={send} onStatusChange={setServerError}
-							preferences={viewing.preferences} onToggleTheater={viewing.toggleTheater}
+							preferences={viewing.preferences} onToggleTheater={viewing.toggleTheater} chatMessages={chat.messages}
 							settings={<WatchSettings preferences={viewing.preferences} onChange={viewing.updatePreferences} notificationsEnabled={notifications.enabled} onToggleNotifications={notifications.toggle} />}>
 							<ChatPanel
 								messages={chat.messages}

@@ -74,8 +74,8 @@ export function WatchSettings({ preferences, onChange, notificationsEnabled, onT
 		{open && <section ref={panelRef} id="watch-settings" className="watch-settings-panel" aria-label="Viewing settings">
 			<header><h2>Viewing settings</h2><button type="button" className="icon-button secondary-button" aria-label="Close viewing settings" onClick={() => { setOpen(false); triggerRef.current?.focus(); }}><X size={16} aria-hidden="true" /></button></header>
 			<label className="watch-setting-toggle"><span>Chat over video</span><input ref={firstControlRef} type="checkbox" checked={preferences.chatOverlay} onChange={event => onChange({ chatOverlay: event.currentTarget.checked })} /></label>
-			<label className="watch-setting-opacity"><span>Chat background opacity <output>{preferences.overlayOpacity}%</output></span><input type="range" min="0" max="100" step="1" value={preferences.overlayOpacity} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlayOpacity: Number(event.currentTarget.value) })} /></label>
-			<p className="watch-setting-help">Your view is saved on this browser. Chat stays below the video on small screens.</p>
+			<label className="watch-setting-opacity"><span>Overlay text opacity <output>{preferences.overlayOpacity}%</output></span><input type="range" min="0" max="100" step="1" value={preferences.overlayOpacity} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlayOpacity: Number(event.currentTarget.value) })} /></label>
+			<p className="watch-setting-help">Recent messages appear at the top left of the video and fade away. Full chat stays beside the video, or below on small screens. Your view is saved on this browser.</p>
 			<label className="watch-setting-toggle"><span>Theater mode <kbd>T</kbd></span><input type="checkbox" checked={preferences.theater} onChange={event => onChange({ theater: event.currentTarget.checked })} /></label>
 			<label className="watch-setting-toggle"><span>Chat notifications</span><input type="checkbox" checked={notificationsEnabled} onChange={onToggleNotifications} /></label>
 		</section>}
