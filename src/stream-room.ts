@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./env";
 import type { ServerMessage } from "./stream/messages";
 import { createChatSnapshot, MAX_CHAT_MESSAGES, normalizeChatName, type ChatSnapshot } from "./stream/chat";
+import { createDefaultChatProfile, type ChatProfile } from "./stream/chat-profile";
 import { getChatRequestId, parseClientMessage } from "./stream/messages";
 import {
     createEmptyStreamState,
@@ -23,24 +24,33 @@ import {
     sendMessage
 } from "./stream/sockets";
 import { fetchYouTubeMetadata } from "./stream/youtube";
+import { updatePlayback } from "./stream/playback";
 
 const STREAM_STATE_STORAGE_KEY = "stream-state";
+const CHAT_RECONNECT_GRACE_MS = 60_000;
 
 export class StreamRoom extends DurableObject<Env> {
     private readonly sockets = new Set<WebSocket>();
     private readonly authenticatedSockets = new Set<WebSocket>();
     private readonly socketRoles = new Map<WebSocket, UserRole>();
     private readonly socketNames = new Map<WebSocket, string>();
+    private readonly socketProfiles = new Map<WebSocket, ChatProfile>();
+    private readonly socketSenderIds = new Map<WebSocket, string>();
     private readonly chatFloodWindows = new Map<WebSocket, { startedAtMs: number; count: number }>();
+    private readonly socketOpenedAt = new Map<WebSocket, number>();
+    private readonly socketLastPingAt = new Map<WebSocket, number>();
     private readonly appEnv: Env;
 
     private streamState: StreamState = createEmptyStreamState();
     private initialized = false;
     private chat: ChatSnapshot = createChatSnapshot();
+    private chatCleanupAt: number | null = null;
+    private chatAlarmTask: Promise<void> = Promise.resolve();
 
     constructor(ctx: DurableObjectState, env: Env) {
         super(ctx, env);
         this.appEnv = env;
+        this.logChatEvent("room_initialized", { cause: "actor_started" });
     }
 
     async fetch(request: Request): Promise<Response> {
@@ -54,6 +64,7 @@ export class StreamRoom extends DurableObject<Env> {
 
         server.accept();
         this.sockets.add(server);
+        this.socketOpenedAt.set(server, Date.now());
 
         server.addEventListener("message", (event) => {
             void this.onMessage(server, event.data).catch(() => {
@@ -63,12 +74,24 @@ export class StreamRoom extends DurableObject<Env> {
             });
         });
 
-        server.addEventListener("close", () => {
-            this.onDisconnect(server);
+        let closeLogged = false;
+        server.addEventListener("close", (event) => {
+            const details = {
+                code: event.code,
+                reason: event.reason === "User left room" ? event.reason : event.reason ? "Peer reason omitted" : "",
+                wasClean: event.wasClean,
+                deliberate: event.code === 1000 && event.reason === "User left room"
+            };
+            // Close metadata can arrive after an error has already removed the socket.
+            if (!closeLogged) {
+                closeLogged = true;
+                this.logChatEvent("socket_closed", details);
+            }
+            this.onDisconnect(server, "socket_close", details);
         });
 
         server.addEventListener("error", () => {
-            this.onDisconnect(server);
+            this.onDisconnect(server, "socket_error");
         });
 
         return new Response(null, {
@@ -103,13 +126,21 @@ export class StreamRoom extends DurableObject<Env> {
 
         switch (message.type) {
             case "authenticate":
-                this.authenticate(socket, message.mode, message.password, message.name);
+                this.authenticate(socket, message.mode, message.password, message.name, message.profile);
                 break;
 
             case "set_name":
                 this.requireAuthenticated(socket, () => {
                     this.socketNames.set(socket, message.name);
-                    this.send(socket, { type: "name_updated", name: message.name });
+                    this.send(socket, { type: "name_updated", name: message.name, profile: this.socketProfiles.get(socket) ?? createDefaultChatProfile() });
+                });
+                break;
+
+            case "set_profile":
+                this.requireAuthenticated(socket, () => {
+                    this.socketNames.set(socket, message.name);
+                    this.socketProfiles.set(socket, message.profile);
+                    this.send(socket, { type: "name_updated", name: message.name, profile: message.profile });
                 });
                 break;
 
@@ -119,8 +150,15 @@ export class StreamRoom extends DurableObject<Env> {
                 });
                 break;
 
+            case "leave":
+                this.requireAuthenticated(socket, () => {
+                    this.onDisconnect(socket, "explicit_leave", { deliberate: true, code: 1000, reason: "User left room" });
+                });
+                break;
+
             case "ping":
                 this.requireAuthenticated(socket, () => {
+                    this.socketLastPingAt.set(socket, Date.now());
                     this.send(socket, {
                         type: "pong",
                         serverNowMs: Date.now()
@@ -166,24 +204,37 @@ export class StreamRoom extends DurableObject<Env> {
 
             case "play_video":
                 await this.requireAdminAsync(socket, async () => {
-                    await this.setPlayback(true, message.positionSec);
+                    await this.setPlayback(true);
                 });
                 break;
 
             case "pause_video":
                 await this.requireAdminAsync(socket, async () => {
-                    await this.setPlayback(false, message.positionSec);
+                    await this.setPlayback(false);
                 });
                 break;
 
             case "set_playback_rate":
                 await this.requireAdminAsync(socket, async () => {
-                    await this.setPlaybackRate(message.playbackRate, message.positionSec);
+                    await this.setPlaybackRate(message.playbackRate);
+                });
+                break;
+
+            case "seek_video":
+                await this.requireAdminAsync(socket, async () => {
+                    if (!this.matchesPlaybackContext(socket, message)) return;
+                    this.streamState = {
+                        ...this.streamState,
+                        playback: updatePlayback(this.streamState.playback, { positionSec: message.positionSec }, Date.now()),
+                    };
+                    await this.saveStreamState();
+                    this.broadcastState();
                 });
                 break;
 
             case "next_video":
                 await this.requireAdminAsync(socket, async () => {
+                    if (message.playlistItemId !== undefined && !this.matchesPlaybackContext(socket, message)) return;
                     await this.nextVideo();
                 });
                 break;
@@ -200,7 +251,8 @@ export class StreamRoom extends DurableObject<Env> {
         socket: WebSocket,
         mode: "viewer" | "admin",
         password: string,
-        name?: string
+        name?: string,
+        profile?: ChatProfile
     ): void {
         if (this.isAuthenticated(socket)) {
             this.send(socket, { type: "error", message: "Already authenticated" });
@@ -232,7 +284,7 @@ export class StreamRoom extends DurableObject<Env> {
                 return;
             }
 
-            this.finishAuthentication(socket, "viewer", name);
+            this.finishAuthentication(socket, "viewer", name, profile);
             return;
         }
 
@@ -257,23 +309,32 @@ export class StreamRoom extends DurableObject<Env> {
             return;
         }
 
-        this.finishAuthentication(socket, "admin", name);
+        this.finishAuthentication(socket, "admin", name, profile);
     }
 
-    private finishAuthentication(socket: WebSocket, role: UserRole, name?: string): void {
+    private finishAuthentication(socket: WebSocket, role: UserRole, name?: string, profile?: ChatProfile): void {
+        this.expireEmptyChat();
+        if (this.chatCleanupAt !== null) {
+            this.chatCleanupAt = null;
+            this.updateChatAlarm(null);
+            this.logChatEvent("chat_cleanup_cancelled", { cause: "participant_returned" });
+        }
         this.authenticatedSockets.add(socket);
         this.socketRoles.set(socket, role);
         this.socketNames.set(socket, normalizeChatName(name));
+        this.socketProfiles.set(socket, profile ?? createDefaultChatProfile());
+        this.socketSenderIds.set(socket, crypto.randomUUID());
 
         this.send(socket, {
             type: "authenticated",
             role,
             listenerCount: this.authenticatedSockets.size,
-            serverNowMs: Date.now()
+            serverNowMs: Date.now(),
+            senderId: this.socketSenderIds.get(socket)
         });
 
         this.sendState(socket);
-        this.send(socket, { type: "name_updated", name: this.socketNames.get(socket) ?? "Guest" });
+        this.send(socket, { type: "name_updated", name: this.socketNames.get(socket) ?? "Guest", profile: this.socketProfiles.get(socket) });
         this.send(socket, { type: "chat_history", chat: this.chat });
         this.broadcastPresence();
     }
@@ -306,7 +367,9 @@ export class StreamRoom extends DurableObject<Env> {
         const message = {
             id: crypto.randomUUID(),
             sessionId: this.chat.sessionId,
+            senderId: this.socketSenderIds.get(socket)!,
             name: this.socketNames.get(socket) ?? "Guest",
+            profile: this.socketProfiles.get(socket) ?? createDefaultChatProfile(),
             text,
             ...(gifId ? { gifId } : {}),
             sentAtMs: now
@@ -496,12 +559,7 @@ export class StreamRoom extends DurableObject<Env> {
         this.streamState = {
             ...this.streamState,
             currentIndex: playlistIndex,
-            playback: {
-                playing: true,
-                positionSec: 0,
-                playbackRate: this.streamState.playback.playbackRate,
-                updatedAtMs: Date.now()
-            }
+            playback: updatePlayback(this.streamState.playback, { playing: true, positionSec: 0 }, Date.now())
         };
 
         await this.saveStreamState();
@@ -510,6 +568,7 @@ export class StreamRoom extends DurableObject<Env> {
 
     private async nextVideo(): Promise<void> {
         const wasPlaying = this.streamState.playback.playing;
+        const previousUpdatedAtMs = this.streamState.playback.updatedAtMs;
 
         this.streamState = moveToNextPlaylistItem(this.streamState);
 
@@ -524,6 +583,8 @@ export class StreamRoom extends DurableObject<Env> {
                 }
             };
         }
+
+        this.streamState.playback.updatedAtMs = Math.max(Date.now(), previousUpdatedAtMs + 1);
 
         await this.saveStreamState();
         this.broadcastState();
@@ -540,37 +601,45 @@ export class StreamRoom extends DurableObject<Env> {
         this.broadcastState();
     }
 
-    private async setPlayback(playing: boolean, positionSec: number): Promise<void> {
+    private matchesPlaybackContext(socket: WebSocket, context: { playlistItemId?: string; playbackUpdatedAtMs?: number }): boolean {
+        const current = this.streamState.playlist[this.streamState.currentIndex];
+        if (current && current.id === context.playlistItemId && this.streamState.playback.updatedAtMs === context.playbackUpdatedAtMs) return true;
+        console.info('[watchparty:sync]', {
+            event: 'stale_command_rejected', updatedAtMs: this.streamState.playback.updatedAtMs,
+            commandUpdatedAtMs: context.playbackUpdatedAtMs,
+        });
+        this.send(socket, { type: 'state', state: this.streamState });
+        return false;
+    }
+
+    private async setPlayback(playing: boolean): Promise<void> {
         if (this.streamState.playlist.length === 0) {
             return;
         }
 
+        // Legacy clients may still send periodic clock samples. Repeating a
+        // transport state must never reset the timeline or trigger a disk write.
+        if (this.streamState.playback.playing === playing) {
+            this.broadcastState();
+            return;
+        }
         this.streamState = {
             ...this.streamState,
-            playback: {
-                playing,
-                positionSec,
-                playbackRate: this.streamState.playback.playbackRate,
-                updatedAtMs: Date.now()
-            }
+            playback: updatePlayback(this.streamState.playback, { playing }, Date.now())
         };
 
         await this.saveStreamState();
         this.broadcastState();
     }
 
-    private async setPlaybackRate(
-        playbackRate: number,
-        positionSec: number
-    ): Promise<void> {
+    private async setPlaybackRate(playbackRate: number): Promise<void> {
+        if (this.streamState.playback.playbackRate === playbackRate) {
+            this.broadcastState();
+            return;
+        }
         this.streamState = {
             ...this.streamState,
-            playback: {
-                ...this.streamState.playback,
-                positionSec,
-                playbackRate,
-                updatedAtMs: Date.now()
-            }
+            playback: updatePlayback(this.streamState.playback, { playbackRate }, Date.now())
         };
 
         await this.saveStreamState();
@@ -635,22 +704,80 @@ export class StreamRoom extends DurableObject<Env> {
         return this.sockets.has(socket) && socket.readyState === WebSocket.OPEN && this.authenticatedSockets.has(socket);
     }
 
-    private onDisconnect(socket: WebSocket): void {
-        const wasAuthenticated = this.authenticatedSockets.delete(socket);
+    private logChatEvent(event: string, details: Record<string, unknown> = {}): void {
+        console.info("[watchparty:room]", {
+            event, at: new Date().toISOString(), sessionId: this.chat.sessionId,
+            participants: this.authenticatedSockets.size, messageCount: this.chat.messages.length,
+            ...details
+        });
+    }
 
-        this.sockets.delete(socket);
+    private updateChatAlarm(deadline: number | null): void {
+        // Serialize cancellation and scheduling so a returning participant cannot
+        // leave an older alarm write racing a later empty-room deadline.
+        this.chatAlarmTask = this.chatAlarmTask.catch(() => {}).then(() => deadline === null
+            ? this.ctx.storage.deleteAlarm()
+            : this.ctx.storage.setAlarm(deadline));
+        this.ctx.waitUntil(this.chatAlarmTask.catch(() => {
+            this.logChatEvent("chat_alarm_error", { cause: deadline === null ? "cancel_failed" : "schedule_failed" });
+        }));
+    }
+
+    private resetChat(cause: string): void {
+        const previousSessionId = this.chat.sessionId;
+        const clearedMessageCount = this.chat.messages.length;
+        this.chat = createChatSnapshot();
+        this.chatCleanupAt = null;
+        this.updateChatAlarm(null);
+        this.logChatEvent("chat_reset", { cause, previousSessionId, clearedMessageCount });
+    }
+
+    private expireEmptyChat(): void {
+        if (this.authenticatedSockets.size === 0 && this.chatCleanupAt !== null && Date.now() >= this.chatCleanupAt) {
+            this.resetChat("empty_room_grace_expired");
+        }
+    }
+
+    async alarm(): Promise<void> {
+        await this.chatAlarmTask;
+        this.expireEmptyChat();
+        if (this.chatCleanupAt !== null && this.authenticatedSockets.size === 0) {
+            this.updateChatAlarm(this.chatCleanupAt);
+        }
+        await this.chatAlarmTask;
+    }
+
+    private onDisconnect(socket: WebSocket, cause: string, details: { code?: number; reason?: string; wasClean?: boolean; deliberate?: boolean } = {}): void {
+        if (!this.sockets.delete(socket)) return;
+        const wasAuthenticated = this.authenticatedSockets.delete(socket);
+        const now = Date.now();
+        const openedAt = this.socketOpenedAt.get(socket);
+        const lastPingAt = this.socketLastPingAt.get(socket);
+        this.logChatEvent("socket_disconnected", {
+            cause, ...details, wasAuthenticated,
+            connectionDurationMs: openedAt === undefined ? null : now - openedAt,
+            lastPingAgeMs: lastPingAt === undefined ? null : now - lastPingAt
+        });
         this.socketRoles.delete(socket);
         this.socketNames.delete(socket);
+        this.socketProfiles.delete(socket);
+        this.socketSenderIds.delete(socket);
         this.chatFloodWindows.delete(socket);
+        this.socketOpenedAt.delete(socket);
+        this.socketLastPingAt.delete(socket);
 
         if (socket.readyState !== WebSocket.CLOSED) {
-            socket.close();
+            socket.close(1000, details.deliberate ? "User left room" : "Connection closed");
         }
 
         if (wasAuthenticated) {
-            // Chat lifetime ends synchronously, before playback persistence yields.
             if (this.authenticatedSockets.size === 0) {
-                this.chat = createChatSnapshot();
+                if (details.deliberate) this.resetChat("last_participant_left");
+                else {
+                    this.chatCleanupAt = now + CHAT_RECONNECT_GRACE_MS;
+                    this.updateChatAlarm(this.chatCleanupAt);
+                    this.logChatEvent("chat_cleanup_scheduled", { cause, graceMs: CHAT_RECONNECT_GRACE_MS, deadlineMs: this.chatCleanupAt });
+                }
             }
             this.ctx.waitUntil(this.stopPlaybackWhenEmpty());
             this.broadcastPresence();
@@ -713,7 +840,7 @@ export class StreamRoom extends DurableObject<Env> {
 
     private broadcast(message: ServerMessage): void {
         broadcastMessage(this.authenticatedSockets, message, (socket) => {
-            this.onDisconnect(socket);
+            this.onDisconnect(socket, "broadcast_send_failed");
         });
     }
 
@@ -721,7 +848,7 @@ export class StreamRoom extends DurableObject<Env> {
         const sent = sendMessage(socket, message);
 
         if (!sent) {
-            this.onDisconnect(socket);
+            this.onDisconnect(socket, "direct_send_failed");
         }
     }
 }

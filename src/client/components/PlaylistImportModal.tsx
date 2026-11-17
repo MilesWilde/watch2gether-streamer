@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { RequestedVideoInput } from "../../stream/playlist";
 import type { YouTubePlaylistPreview, YouTubePlaylistVideo } from "../../stream/youtube-playlists";
 
@@ -6,12 +7,14 @@ const playlistChunkSize = 25;
 
 type PlaylistImportModalProps = {
 	preview: YouTubePlaylistPreview;
+	disabled?: boolean;
 	onClose: () => void;
 	onImport: (videos: RequestedVideoInput[]) => void;
 };
 
 export function PlaylistImportModal({
 	preview,
+	disabled = false,
 	onClose,
 	onImport
 }: PlaylistImportModalProps) {
@@ -88,13 +91,15 @@ export function PlaylistImportModal({
 	}
 
 	function importVideos(): void {
+		if (disabled) return;
+
 		const videosToImport =
 			selectedVideos.length > 0 ? selectedVideos : visibleVideos;
 
 		onImport(videosToImport.map(toRequestedVideoInput));
 	}
 
-	return (
+	return createPortal(
 		<div className="modal-backdrop" role="presentation">
 			<section
 				className="modal"
@@ -153,12 +158,13 @@ export function PlaylistImportModal({
 					<button type="button" className="secondary-button" onClick={onClose}>
 						Cancel
 					</button>
-					<button type="button" onClick={importVideos}>
+					<button type="button" disabled={disabled} onClick={importVideos}>
 						Request videos
 					</button>
 				</div>
 			</section>
-		</div>
+		</div>,
+		document.body
 	);
 }
 

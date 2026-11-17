@@ -1,5 +1,6 @@
 import { MAX_CHAT_MESSAGES, MAX_CHAT_MESSAGE_LENGTH, MAX_CHAT_NAME_LENGTH, type ChatMessage, type ChatSnapshot } from '../../stream/chat';
-import { getChatGif } from '../../stream/chat-media';
+import { isChatGifId } from '../../stream/chat-gif-id';
+import { isChatProfile, parseChatProfile } from '../../stream/chat-profile';
 
 type ChatStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
 const cacheKey = 'watchparty-chat:global';
@@ -15,9 +16,11 @@ export function isChatMessage(value: unknown): value is ChatMessage {
 	const item = value as Record<string, unknown>;
 	return typeof item.id === 'string' && item.id.length > 0 && item.id.length <= 200 &&
 		typeof item.sessionId === 'string' && item.sessionId.length > 0 && item.sessionId.length <= 200 &&
+		(item.senderId === undefined || (typeof item.senderId === 'string' && item.senderId.trim().length > 0 && item.senderId.length <= 200)) &&
+		(item.profile === undefined || isChatProfile(item.profile)) &&
 		typeof item.name === 'string' && item.name.trim().length > 0 && Array.from(item.name).length <= MAX_CHAT_NAME_LENGTH &&
 		typeof item.text === 'string' && Array.from(item.text).length <= MAX_CHAT_MESSAGE_LENGTH &&
-		(item.gifId === undefined || getChatGif(item.gifId) !== undefined) &&
+		(item.gifId === undefined || isChatGifId(item.gifId)) &&
 		(Boolean(item.text.trim()) || typeof item.gifId === 'string') &&
 		typeof item.sentAtMs === 'number' && Number.isFinite(item.sentAtMs) && item.sentAtMs >= 0 && item.sentAtMs <= 8_640_000_000_000_000;
 }
@@ -29,22 +32,36 @@ export function isChatSnapshot(value: unknown): value is ChatSnapshot {
 		Array.isArray(snapshot.messages) && snapshot.messages.every(item => isChatMessage(item) && item.sessionId === snapshot.sessionId);
 }
 
-export function replaceChatSnapshot(_previous: ChatSnapshot | null, authoritative: ChatSnapshot): ChatSnapshot | null {
+function projectChatMessage(message: ChatMessage): ChatMessage {
+	const profile = parseChatProfile(message.profile);
+	return {
+		id: message.id, sessionId: message.sessionId, name: message.name,
+		text: message.text, sentAtMs: message.sentAtMs,
+		...(message.senderId === undefined ? {} : { senderId: message.senderId }),
+		...(message.gifId === undefined ? {} : { gifId: message.gifId }),
+		...(profile ? { profile } : {}),
+	};
+}
+
+export function replaceChatSnapshot(previous: ChatSnapshot | null, authoritative: ChatSnapshot): ChatSnapshot | null {
 	if (!isChatSnapshot(authoritative)) return null;
 	const seen = new Set<string>();
+	const authoritativeIds = new Set(authoritative.messages.map(item => item.id));
+	const retained = previous?.sessionId === authoritative.sessionId
+		? previous.messages.filter(item => !authoritativeIds.has(item.id)) : [];
 	return {
 		sessionId: authoritative.sessionId,
-		messages: authoritative.messages.filter(item => {
+		messages: [...retained, ...authoritative.messages].filter(item => {
 			if (seen.has(item.id)) return false;
 			seen.add(item.id);
 			return true;
-		}).slice(-maxMessages),
+		}).slice(-maxMessages).map(projectChatMessage),
 	};
 }
 
 export function appendChatMessage(snapshot: ChatSnapshot | null, message: ChatMessage): ChatSnapshot | null {
 	if (!snapshot || !isChatMessage(message) || message.sessionId !== snapshot.sessionId || snapshot.messages.some(item => item.id === message.id)) return snapshot;
-	return { sessionId: snapshot.sessionId, messages: [...snapshot.messages, message].slice(-maxMessages) };
+	return { sessionId: snapshot.sessionId, messages: [...snapshot.messages, projectChatMessage(message)].slice(-maxMessages) };
 }
 
 export function readChatCache(storage: ChatStorage): ChatSnapshot | null {

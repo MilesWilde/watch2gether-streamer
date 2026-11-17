@@ -1,41 +1,62 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type SyntheticEvent } from 'react';
-import { ArrowDown, Check, Pencil, Send, Smile, X } from 'lucide-react';
+import { ArrowDown, Pencil, Send, Smile, X } from 'lucide-react';
 import { MAX_CHAT_MESSAGE_LENGTH, type ChatMessage } from '../../stream/chat';
-import { getChatGif } from '../../stream/chat-media';
-import { ChatGifImage, ChatPicker } from './ChatPicker';
+import { tokenizeChatEmotes } from '../../stream/chat-emotes';
+import { continuesChatGroup } from '../lib/chatGrouping';
+import { ChatPicker } from './ChatPicker';
+import { ChatGifAttachment } from './ChatGifAttachment';
 import type { ChatResultServerMessage } from '../../stream/messages';
+import { getEmojiQuery, replaceEmojiQuery, searchReactions, type Reaction } from '../lib/emojiSearch';
+import { getChatStorage } from '../lib/chatStorage';
+import { rememberMedia } from '../lib/mediaRecents';
+import { createDefaultChatProfile, type ChatProfile } from '../../stream/chat-profile';
+import { ChatProfileEditor } from './ChatProfileEditor';
+import { RobotAvatar } from './RobotAvatar';
+
+const defaultProfile = createDefaultChatProfile();
 
 type ChatPanelProps = {
 	messages: ChatMessage[];
 	name: string;
+	profile?: ChatProfile;
 	ready: boolean;
 	error: string | null;
 	result: ChatResultServerMessage | null;
 	onSend: (text: string, gifId: string | undefined, requestId: string) => boolean;
 	onNameChange: (name: string) => boolean;
+	onProfileChange?: (name: string, profile: ChatProfile) => boolean;
 };
 
-export function ChatPanel({ messages, name, ready, error, result, onSend, onNameChange }: ChatPanelProps) {
+export function ChatPanel({ messages, name, profile = defaultProfile, ready, error, result, onSend, onNameChange, onProfileChange }: ChatPanelProps) {
 	const [draft, setDraft] = useState('');
 	const [gifId, setGifId] = useState<string>();
 	const [pickerOpen, setPickerOpen] = useState(false);
-	const [editingName, setEditingName] = useState(false);
-	const [nameDraft, setNameDraft] = useState(name);
+	const [pickerAnchor, setPickerAnchor] = useState<{ x: number; y: number }>();
+	const [editingProfile, setEditingProfile] = useState(false);
 	const [localError, setLocalError] = useState<string | null>(null);
 	const [unread, setUnread] = useState(0);
 	const [pendingId, setPendingId] = useState<string | null>(null);
+	const [selection, setSelection] = useState({ start: 0, end: 0 });
+	const [suggestionIndex, setSuggestionIndex] = useState(0);
+	const [dismissedQuery, setDismissedQuery] = useState('');
+	const [composing, setComposing] = useState(false);
 	const pendingRef = useRef<string | null>(null);
 	const focusAfterResultRef = useRef(false);
 	const logRef = useRef<HTMLDivElement>(null);
 	const composerRef = useRef<HTMLTextAreaElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
+	const profileTriggerRef = useRef<HTMLButtonElement>(null);
+	const suggestionsRef = useRef<HTMLDivElement>(null);
 	const nearBottomRef = useRef(true);
 	const previousLastRef = useRef<string | undefined>(undefined);
-	const selectedGif = gifId ? getChatGif(gifId) : undefined;
 	const draftLength = Array.from(draft).length;
 	const closePicker = useCallback(() => setPickerOpen(false), []);
+	const queryKey = `${draft}\u0000${selection.start}\u0000${selection.end}`;
+	const emojiQuery = !pendingId && !pickerOpen && !composing && dismissedQuery !== queryKey ? getEmojiQuery(draft, selection.start, selection.end) : null;
+	const suggestions = emojiQuery ? searchReactions(emojiQuery.query) : [];
+	const activeSuggestion = Math.min(suggestionIndex, Math.max(0, suggestions.length - 1));
+	useEffect(() => { suggestionsRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }); }, [activeSuggestion, emojiQuery?.query]);
 
-	useEffect(() => { if (!editingName) setNameDraft(name); }, [name, editingName]);
 	useLayoutEffect(() => {
 		if (pendingId || !ready || !focusAfterResultRef.current) return;
 		focusAfterResultRef.current = false;
@@ -92,20 +113,23 @@ export function ChatPanel({ messages, name, ready, error, result, onSend, onName
 		setPickerOpen(false);
 		setLocalError(null);
 	}
-	function saveName(event: SyntheticEvent): void {
-		event.preventDefault();
-		if (!nameDraft.trim() || Array.from(nameDraft.trim()).length > 40) { setLocalError('Name must contain 1 to 40 characters.'); return; }
-		if (!onNameChange(nameDraft.trim())) { setLocalError('Connection unavailable. Try again when connected.'); return; }
-		setEditingName(false);
-		setLocalError(null);
-	}
 	function insertEmoji(emoji: string): void {
 		const input = composerRef.current;
 		const start = input?.selectionStart ?? draft.length;
 		const end = input?.selectionEnd ?? draft.length;
 		setDraft(draft.slice(0, start) + emoji + draft.slice(end));
 		setPickerOpen(false);
+		setSelection({ start: start + emoji.length, end: start + emoji.length });
 		requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(start + emoji.length, start + emoji.length); });
+	}
+	function selectSuggestion(reaction: Reaction): void {
+		if (!emojiQuery) return;
+		const next = replaceEmojiQuery(draft, emojiQuery, reaction.value);
+		setDraft(next.text);
+		setSelection({ start: next.caret, end: next.caret });
+		setSuggestionIndex(0);
+		rememberMedia(getChatStorage(), reaction.pack === 'unicode' ? reaction.id : `emote:${reaction.id}`);
+		requestAnimationFrame(() => { composerRef.current?.focus(); composerRef.current?.setSelectionRange(next.caret, next.caret); });
 	}
 
 	return <section className="chat-panel" aria-label="Room chat">
@@ -117,12 +141,13 @@ export function ChatPanel({ messages, name, ready, error, result, onSend, onName
 			if (nearBottomRef.current) setUnread(0);
 		}}>
 			{messages.length === 0 && <p className="empty-state">{ready ? 'No messages yet.' : 'Connecting to chat...'}</p>}
-			{messages.map(message => {
-				const gif = message.gifId ? getChatGif(message.gifId) : undefined;
-				return <article className="chat-message" key={message.id}>
-					<div className="chat-message-meta"><strong>{message.name}</strong><time dateTime={new Date(message.sentAtMs).toISOString()}>{new Date(message.sentAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
-					{message.text && <p>{message.text}</p>}
-					{gif && <ChatGifImage url={gif.url} label={gif.label} />}
+			{messages.map((message, index) => {
+				const continuation = continuesChatGroup(messages[index - 1], message);
+				return <article className={`chat-message${continuation ? ' chat-message-continuation' : ''}`} key={message.id}>
+					{!continuation && <RobotAvatar profile={message.profile} className="chat-message-avatar" size={32} />}
+					<div className={continuation ? 'sr-only' : 'chat-message-meta'}><strong style={{ color: `#${message.profile?.nameColor ?? defaultProfile.nameColor}` }}>{message.name}</strong><time dateTime={new Date(message.sentAtMs).toISOString()}>{new Date(message.sentAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
+					{message.text && <p>{tokenizeChatEmotes(message.text).map((token, tokenIndex) => token.type === 'text' ? token.text : <img key={tokenIndex} className="chat-emote" src={token.emote.url} alt={`:${token.emote.id}:`} title={`${token.emote.label} · ${token.emote.author}`} width={32} height={32} />)}</p>}
+					{message.gifId && <ChatGifAttachment id={message.gifId} />}
 				</article>;
 			})}
 		</div>
@@ -132,25 +157,44 @@ export function ChatPanel({ messages, name, ready, error, result, onSend, onName
 			setUnread(0);
 		}}><ArrowDown size={16} aria-hidden="true" />New messages ({unread})</button>}
 		<div className="chat-compose-area">
-			{editingName ? <form className="chat-name-form" onSubmit={saveName}>
-				<label className="sr-only" htmlFor="chat-name">Display name</label>
-				<input id="chat-name" value={nameDraft} onChange={event => setNameDraft(event.currentTarget.value)} autoFocus autoComplete="nickname" onKeyDown={event => { if (event.key === 'Escape') setEditingName(false); }} />
-				<button type="submit" className="icon-button" title="Save name" aria-label="Save name" disabled={!ready}><Check size={18} /></button>
-				<button type="button" className="icon-button secondary-button" title="Cancel name edit" aria-label="Cancel name edit" onClick={() => setEditingName(false)}><X size={18} /></button>
-			</form> : <div className="chat-name"><span>{name || 'Guest'}</span><button type="button" className="icon-button secondary-button" title="Edit display name" aria-label="Edit display name" onClick={() => { setNameDraft(name); setEditingName(true); }}><Pencil size={15} /></button></div>}
+			{suggestions.length > 0 && <div id="emoji-suggestions" ref={suggestionsRef} className="emoji-suggestions" role="listbox" aria-label="Emoji suggestions">
+				{suggestions.map((reaction, index) => <button type="button" role="option" id={`emoji-suggestion-${index}`} key={reaction.id} aria-selected={index === activeSuggestion} title={reaction.value} onPointerDown={event => event.preventDefault()} onClick={() => selectSuggestion(reaction)}>
+					{reaction.url ? <img src={reaction.url} alt="" width={28} height={28} /> : <span className="suggestion-glyph">{reaction.value}</span>}
+					<span className="suggestion-label">{reaction.label}<small>{reaction.url ? reaction.value : reaction.pack}</small></span>
+				</button>)}
+			</div>}
+			<div className="chat-name"><RobotAvatar profile={profile} size={28} /><span style={{ color: `#${profile.nameColor}` }}>{name || 'Guest'}</span><button ref={profileTriggerRef} type="button" className="icon-button secondary-button" title="Edit profile" aria-label="Edit profile" onClick={() => setEditingProfile(true)}><Pencil size={15} /></button></div>
+			{editingProfile && <ChatProfileEditor name={name} profile={profile} ready={ready} triggerRef={profileTriggerRef} onSave={(nextName, nextProfile) => onProfileChange ? onProfileChange(nextName, nextProfile) : onNameChange(nextName)} onClose={() => setEditingProfile(false)} />}
 			<form className="chat-composer" onSubmit={submit}>
-				{selectedGif && <div className="pending-gif"><ChatGifImage url={selectedGif.url} label={selectedGif.label} /><button type="button" className="icon-button secondary-button" title="Remove GIF" aria-label="Remove GIF" disabled={!!pendingId} onClick={() => setGifId(undefined)}><X size={16} /></button></div>}
+				{gifId && <div className="pending-gif"><ChatGifAttachment id={gifId} /><button type="button" className="icon-button secondary-button" title="Remove GIF" aria-label="Remove GIF" disabled={!!pendingId} onClick={() => setGifId(undefined)}><X size={16} /></button></div>}
 				<label className="sr-only" htmlFor="chat-message">Message</label>
-				<textarea id="chat-message" rows={2} ref={composerRef} value={draft} placeholder="Message" disabled={!ready || !!pendingId} onChange={event => setDraft(event.currentTarget.value)} onKeyDown={event => {
-					if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); submit(); }
+				<textarea id="chat-message" rows={2} ref={composerRef} value={draft} placeholder="Message" disabled={!!pendingId}
+					aria-autocomplete="list" aria-controls={suggestions.length ? 'emoji-suggestions' : undefined} aria-activedescendant={suggestions.length ? `emoji-suggestion-${activeSuggestion}` : undefined}
+					onChange={event => { const input = event.currentTarget; setDraft(input.value); setSelection({ start: input.selectionStart ?? input.value.length, end: input.selectionEnd ?? input.value.length }); setSuggestionIndex(0); }}
+					onSelect={event => { const input = event.currentTarget; setSelection({ start: input.selectionStart, end: input.selectionEnd }); }}
+					onBlur={() => setDismissedQuery(queryKey)}
+					onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)} onKeyDown={event => {
+					if (event.nativeEvent.isComposing || event.keyCode === 229 || composing) return;
+					if (suggestions.length) {
+						if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setSuggestionIndex((activeSuggestion + (event.key === 'ArrowDown' ? 1 : suggestions.length - 1)) % suggestions.length); return; }
+						if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) { event.preventDefault(); selectSuggestion(suggestions[activeSuggestion]); return; }
+						if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setDismissedQuery(queryKey); return; }
+					}
+					if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit(); }
 				}} />
 				<div className="composer-actions">
-					<button ref={triggerRef} type="button" className="icon-button secondary-button" title="Emoji and GIFs" aria-label="Emoji and GIFs" aria-expanded={pickerOpen} aria-controls="chat-picker" disabled={!ready || !!pendingId} onClick={() => setPickerOpen(open => !open)}><Smile size={20} /></button>
+					<button ref={triggerRef} type="button" className="icon-button secondary-button" title="Emoji and GIFs" aria-label="Emoji and GIFs" aria-expanded={pickerOpen} aria-controls="chat-picker" disabled={!!pendingId} onClick={event => {
+						if (!pickerOpen) {
+							const bounds = event.detail === 0 ? event.currentTarget.getBoundingClientRect() : null;
+							setPickerAnchor(bounds ? { x: bounds.left, y: bounds.bottom } : { x: event.clientX, y: event.clientY });
+						}
+						setPickerOpen(open => !open);
+					}}><Smile size={20} /></button>
 					<span className="message-count">{draftLength > 1800 ? `${draftLength}/${MAX_CHAT_MESSAGE_LENGTH}` : ''}</span>
 					<button type="submit" className="icon-button send-button" title="Send message" aria-label="Send message" disabled={!ready || !!pendingId || (!draft.trim() && !gifId) || draftLength > MAX_CHAT_MESSAGE_LENGTH}><Send size={18} /></button>
 				</div>
 			</form>
-			{pickerOpen && <ChatPicker triggerRef={triggerRef} onClose={closePicker} onEmoji={insertEmoji} onGif={id => { setGifId(id); setPickerOpen(false); composerRef.current?.focus(); }} />}
+			<ChatPicker open={pickerOpen} anchor={pickerAnchor} triggerRef={triggerRef} onClose={closePicker} onEmoji={insertEmoji} onGif={id => { setGifId(id); setPickerOpen(false); composerRef.current?.focus(); }} />
 			{(localError || error) && <p className="chat-error" role="alert">{localError || error}</p>}
 		</div>
 	</section>;

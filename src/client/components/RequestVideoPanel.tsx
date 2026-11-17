@@ -8,6 +8,7 @@ import { PlaylistImportModal } from "./PlaylistImportModal";
 type RequestVideoPanelProps = {
 	mode: UserRole;
 	password: string;
+	disabled?: boolean;
 	onSend: (message: ClientMessage) => void;
 	onStatusChange: (status: string | null) => void;
 };
@@ -15,6 +16,7 @@ type RequestVideoPanelProps = {
 export function RequestVideoPanel({
 	mode,
 	password,
+	disabled = false,
 	onSend,
 	onStatusChange
 }: RequestVideoPanelProps) {
@@ -25,6 +27,7 @@ export function RequestVideoPanel({
 
 	async function submit(event: SyntheticEvent<HTMLFormElement>): Promise<void> {
 		event.preventDefault();
+		if (disabled) return;
 
 		const trimmedUrl = url.trim();
 
@@ -75,7 +78,7 @@ export function RequestVideoPanel({
 						value={url}
 						onChange={(event) => setUrl(event.currentTarget.value)}
 					/>
-					<button type="submit">Request</button>
+					<button type="submit" disabled={disabled}>Request</button>
 				</div>
 			</form>
 
@@ -86,8 +89,10 @@ export function RequestVideoPanel({
 			{playlistPreview ? (
 				<PlaylistImportModal
 					preview={playlistPreview}
+					disabled={disabled}
 					onClose={() => setPlaylistPreview(null)}
 					onImport={(videos) => {
+						if (disabled) return;
 						onSend({
 							type: "request_videos",
 							videos

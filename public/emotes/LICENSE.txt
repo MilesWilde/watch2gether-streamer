@@ -1,0 +1,110 @@
+HUMAN-DESIGNED EMOJI ARTWORK
+
+OpenMoji 14.0.0
+All emojis designed by OpenMoji, the open-source emoji and icon project.
+Created by the HfG Schwabisch Gmund team, students and external contributors.
+Individual artists are credited for each included asset in manifest.json.
+Source: https://github.com/hfg-gmuend/openmoji/tree/14.0.0
+License: Creative Commons Attribution-ShareAlike 4.0 International.
+License link: https://creativecommons.org/licenses/by-sa/4.0/
+Full upstream license: openmoji/LICENSE.txt
+
+Twemoji v14.0.2
+Graphics copyright Twitter, Inc and other contributors.
+Source: https://github.com/twitter/twemoji/tree/v14.0.2
+License: Creative Commons Attribution 4.0 International.
+License link: https://creativecommons.org/licenses/by/4.0/
+Full upstream license: twemoji/LICENSE-GRAPHICS.txt
+
+Neocat (official archive pinned by SHA-256)
+Neocat by Volpeon.
+Source: https://volpeon.ink/emojis/neocat/
+Official registry: https://volpeon.ink/emojis/pleroma.json
+Archive: https://strapi.volpeon.ink/uploads/neocat_5359f48261.zip
+Archive SHA-256: 3b3439b4aeb92da6da1432bb90cd554dda2121e01ae61a45d6a88f868aa03952
+License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International.
+License link: https://creativecommons.org/licenses/by-nc-sa/4.0/
+Full upstream license (unchanged): neocat/LICENSE.txt
+Upstream filenames and aliases (unchanged): neocat/UPSTREAM-meta.json
+Personal/noncommercial use only. Neocat may not be used commercially under
+this license. Redistributions must retain attribution and license notices;
+adaptations must comply with the license's ShareAlike requirements.
+No numbered release is asserted: the exact official archive is the version.
+
+All included pack assets are redistributed without modifications.
+manifest.json records the pack, version, source URL, credited creator and
+SHA-256 digest for every artwork file. Existing shortcodes refer to the
+OpenMoji versions; twemoji_-prefixed shortcodes select Twemoji artwork.
+catalog.json is generated from that manifest for runtime use; it excludes
+per-asset source URLs and checksums to keep provenance out of client code.
+Additional OpenMoji shortcodes use openmoji_ plus the lowercase Unicode
+codepoint (hyphens become underscores). Neocat retains upstream shortcodes.
+The OpenMoji expansion covers standard smileys/emotion, animals/nature,
+food/drink, travel/places, activities, objects and symbols, without adding
+a second full standard style, skin-tone permutations or extra flag sets.
+Artist and search metadata comes from OpenMoji's pinned data/openmoji.json:
+https://raw.githubusercontent.com/hfg-gmuend/openmoji/14.0.0/data/openmoji.json
+Metadata SHA-256: 7c4b7fec4060baa4a65cdcd06ff29d8ec546dd7f47afe9513b9880c0043167b7
+
+EXTERNALLY HOSTED GIPHY REACTIONS
+
+The emoji-pack licenses above apply only to their respective pack assets.
+GIPHY reactions remain the property of their respective creators and rights
+holders. No license to third-party GIF content is granted here. The app
+references external media.giphy.com URLs directly; no GIPHY binaries are
+redistributed in this directory. Source links below document the additions
+to src/stream/chat-media.ts; the original 12 IDs and URLs are retained.
+
+Each addition was checked for HTTP 200, image/gif content type, decodable
+animated GIF content, and visual relevance using beginning, middle, and
+ending frames. HTTP 404 responses and a placeholder animation served with
+HTTP 200 were rejected. External availability may change over time.
+
+bongo-party (Bongo Cat, michaelpaulukonis):
+https://giphy.com/gifs/mn9Mc2ocSfTGTlp9XT
+big-hug (Loof and Timmy):
+https://giphy.com/gifs/jXSMCVV0kSHr4bqxZM
+squirrel-woohoo (Holler Studios):
+https://giphy.com/gifs/fl4MZmeXzPfrYh4FeR
+kermit-panic (ABC Network):
+https://giphy.com/gifs/h5JpPmYQsan1QqTeUE
+skeleton-cheer (Ludo Studio):
+https://giphy.com/gifs/dHkua6h6uLZ0UhE4Ep
+keyboard-cat:
+https://giphy.com/gifs/JIX9t2j0ZTN9S
+judging-cat:
+https://giphy.com/gifs/mlvseq9yvZhba
+unimpressed-cat:
+https://giphy.com/gifs/v6aOjy0Qo1fIA
+kitty-kiss:
+https://giphy.com/gifs/MDJ9IbxxvDUQM
+kitten-scritches:
+https://giphy.com/gifs/3oriO0OEd9QIDdllqo
+math-confusion:
+https://giphy.com/gifs/WRQBXSCnEFJIuxktnw
+sponge-panic:
+https://giphy.com/gifs/HUkOv6BNWc1HO
+raccoon-spin:
+https://giphy.com/gifs/tHIRLHtNwxpjIFqPdV
+mind-blown:
+https://giphy.com/gifs/26ufdipQqU2lhNA4g
+still-waiting:
+https://giphy.com/gifs/l0HlBO7eyXzSZkJri
+confused-blink:
+https://giphy.com/gifs/l41YtZOb9EUABnuqA
+friendly-wave:
+https://giphy.com/gifs/xT9IgG50Fb7Mi0prBC
+bush-retreat:
+https://giphy.com/gifs/jUwpNzg9IcyrK
+another-one:
+https://giphy.com/gifs/l0HlQ7LRalQqdWfao
+minion-cheer:
+https://giphy.com/gifs/11sBLVxNs7v6WA
+fancy-toast:
+https://giphy.com/gifs/g9582DNuQppxC
+excellent:
+https://giphy.com/gifs/8fen5LSZcHQ5O
+dramatic-tears:
+https://giphy.com/gifs/l3vR4CdLInXOhr3rO
+gazelle-shimmy (Walt Disney Animation Studios):
+https://giphy.com/gifs/Gs4NnVZI3DX79CmxMQ

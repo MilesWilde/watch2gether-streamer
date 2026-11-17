@@ -1,10 +1,11 @@
 import { env } from "cloudflare:workers";
-import { evictDurableObject, runInDurableObject } from "cloudflare:test";
+import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ServerMessage } from "../src/stream/messages";
 import { CHAT_GIFS } from "../src/stream/chat-media";
 import type { StreamRoom } from "../src/stream-room";
 import type { ChatSnapshot } from "../src/stream/chat";
+import { createDefaultChatProfile } from "../src/stream/chat-profile";
 
 const sockets: WebSocket[] = [];
 
@@ -44,6 +45,425 @@ async function authenticate(client: Awaited<ReturnType<typeof connect>>, mode = 
 }
 
 describe("real room WebSockets", () => {
+	it('keeps the server timeline authoritative and rejects obsolete seek and end commands', async () => {
+		const client = await connect(newRoom());
+		await authenticate(client, 'admin');
+		await client.take('state');
+		client.send({ type: 'request_videos', videos: [{ url: 'abcdefghijk' }, { url: 'lmnopqrstuv' }] });
+		let snapshot = (await client.take('state')).state;
+		const context = () => ({ playlistItemId: snapshot.playlist[snapshot.currentIndex].id, playbackUpdatedAtMs: snapshot.playback.updatedAtMs });
+		client.send({ type: 'seek_video', positionSec: 2260, ...context() });
+		snapshot = (await client.take('state')).state;
+		expect(snapshot.playback.positionSec).toBe(2260);
+		client.send({ type: 'play_video', positionSec: 0 });
+		snapshot = (await client.take('state')).state;
+		expect(snapshot.playback).toMatchObject({ playing: true, positionSec: 2260 });
+		const playingAnchor = snapshot.playback;
+		client.send({ type: 'play_video', positionSec: 5 });
+		snapshot = (await client.take('state')).state;
+		expect(snapshot.playback).toEqual(playingAnchor);
+		client.send({ type: 'pause_video', positionSec: 5 });
+		snapshot = (await client.take('state')).state;
+		expect(snapshot.playback.positionSec).toBeGreaterThanOrEqual(2260);
+		client.send({ type: 'set_playback_rate', positionSec: 5, playbackRate: 2 });
+		snapshot = (await client.take('state')).state;
+		expect(snapshot.playback.positionSec).toBeGreaterThanOrEqual(2260);
+		const oldContext = context();
+		client.send({ type: 'seek_video', positionSec: 30, ...oldContext });
+		snapshot = (await client.take('state')).state;
+		expect(snapshot.playback.positionSec).toBe(30);
+		client.send({ type: 'seek_video', positionSec: 2260, ...oldContext });
+		expect((await client.take('state')).state).toEqual(snapshot);
+		client.send({ type: 'next_video', ...oldContext });
+		expect((await client.take('state')).state).toEqual(snapshot);
+		client.send({ type: 'next_video', ...context() });
+		snapshot = (await client.take('state')).state;
+		expect(snapshot.currentIndex).toBe(1);
+		client.send({ type: 'seek_video', positionSec: 2260, ...oldContext });
+		expect((await client.take('state')).state).toEqual(snapshot);
+	});
+	it('prevents viewers from seeking the room timeline', async () => {
+		const client = await connect(newRoom());
+		await authenticate(client);
+		client.send({ type: 'seek_video', positionSec: 10, playlistItemId: 'item', playbackUpdatedAtMs: 1 });
+		expect((await client.take('error')).message).toBe('Admin only.');
+	});
+	it("shares only server-owned profiles on live messages and reconnect history", async () => {
+		const room = newRoom();
+		const first = await connect(room);
+		const profile = { ...createDefaultChatProfile(), eyes: "hearts", robotColor: "f5a8d2", nameColor: "f5b6d2" };
+		first.send({ type: "authenticate", mode: "viewer", password: "qa-viewer", name: "Robot 🐱", profile });
+		await first.take("authenticated");
+		const ack = await first.take("name_updated");
+		expect(ack).toEqual({ type: "name_updated", name: "Robot 🐱", profile });
+		await first.take("chat_history");
+		const peer = await connect(room);
+		await authenticate(peer);
+		first.send({ type: "send_chat", text: "my robot", profile: createDefaultChatProfile(), name: "forged" });
+		const sent = (await first.take("chat_message")).message;
+		expect(sent).toMatchObject({ name: "Robot 🐱", profile });
+		expect((await peer.take("chat_message")).message).toEqual(sent);
+		const returned = await connect(room);
+		expect((await authenticate(returned)).chat.messages).toEqual([sent]);
+	});
+	it("requires authentication for profile updates and preserves historical profile snapshots", async () => {
+		const client = await connect(newRoom());
+		const profile = createDefaultChatProfile();
+		client.send({ type: "set_profile", name: "Before auth", profile });
+		expect((await client.take("error")).message).toBe("Not authenticated");
+		await authenticate(client);
+		await client.take("name_updated");
+		client.send({ type: "send_chat", text: "before" });
+		const before = (await client.take("chat_message")).message;
+		expect(before.profile).toEqual(profile);
+		const next = { ...profile, eyes: "dizzy", nameColor: "d1bfff" };
+		client.send({ type: "set_profile", name: "  New 🤖  ", profile: next });
+		expect(await client.take("name_updated")).toEqual({ type: "name_updated", name: "New 🤖", profile: next });
+		client.send({ type: "send_chat", text: "after" });
+		const after = (await client.take("chat_message")).message;
+		expect(after).toMatchObject({ name: "New 🤖", profile: next, senderId: before.senderId });
+		expect(before.profile).toEqual(profile);
+		client.send({ type: "set_profile", name: "Invalid", profile: { ...next, nameColor: "url(evil)" } });
+		expect((await client.take("error")).message).toBe("Invalid message");
+		client.send({ type: "send_chat", text: "still valid" });
+		expect((await client.take("chat_message")).message).toMatchObject({ name: "New 🤖", profile: next });
+		client.send({ type: "set_name", name: "Legacy rename" });
+		expect(await client.take("name_updated")).toEqual({ type: "name_updated", name: "Legacy rename", profile: next });
+		client.send({ type: "send_chat", text: "after legacy rename" });
+		expect((await client.take("chat_message")).message).toMatchObject({ name: "Legacy rename", profile: next });
+	});
+	it("retains a sole participant's chat during reconnect and cancels pending cleanup", async () => {
+		const room = newRoom();
+		const first = await connect(room);
+		const initial = await authenticate(first);
+		first.send({ type: "send_chat", text: "keep this through reconnect" });
+		const sent = (await first.take("chat_message")).message;
+		first.socket.close();
+		await expect.poll(() => first.socket.readyState).toBe(WebSocket.CLOSED);
+		expect(await runInDurableObject(room, (_instance, state) => state.storage.getAlarm())).not.toBeNull();
+		const returned = await connect(room);
+		expect((await authenticate(returned)).chat).toEqual({ sessionId: initial.chat.sessionId, messages: [sent] });
+		await expect.poll(() => runInDurableObject(room, (_instance, state) => state.storage.getAlarm())).toBeNull();
+		expect(await runDurableObjectAlarm(room)).toBe(false);
+	});
+	it("serializes a delayed alarm write, return cancellation and a later disconnect deadline", async () => {
+		const room = newRoom();
+		const first = await connect(room);
+		const initial = await authenticate(first);
+		first.send({ type: "send_chat", text: "retain until the final deadline" });
+		const sent = (await first.take("chat_message")).message;
+		const startedAt = Date.now();
+		const clock = vi.spyOn(Date, "now").mockReturnValue(startedAt);
+		const operations: string[] = [];
+		let release!: () => void;
+		const blocked = new Promise<void>(resolve => { release = resolve; });
+		await runInDurableObject(room, (_instance, state) => {
+			const setAlarm = state.storage.setAlarm.bind(state.storage);
+			const deleteAlarm = state.storage.deleteAlarm.bind(state.storage);
+			let firstWrite = true;
+			vi.spyOn(state.storage, "setAlarm").mockImplementation(async (...args) => {
+				operations.push(`schedule:${Number(args[0])}`);
+				if (firstWrite) { firstWrite = false; await blocked; }
+				await setAlarm(...args);
+			});
+			vi.spyOn(state.storage, "deleteAlarm").mockImplementation(async (...args) => {
+				operations.push("cancel");
+				await deleteAlarm(...args);
+			});
+		});
+		try {
+			first.socket.close();
+			await expect.poll(() => operations.length).toBe(1);
+			expect(operations).toEqual([`schedule:${startedAt + 60_000}`]);
+			const returned = await connect(room);
+			expect((await authenticate(returned)).chat).toEqual({ sessionId: initial.chat.sessionId, messages: [sent] });
+			clock.mockReturnValue(startedAt + 10_000);
+			returned.socket.close();
+			await expect.poll(() => returned.socket.readyState).toBe(WebSocket.CLOSED);
+			await runInDurableObject(room, instance => {
+				expect(Reflect.get(instance, "chatCleanupAt")).toBe(startedAt + 70_000);
+			});
+			expect(operations).toEqual([`schedule:${startedAt + 60_000}`]);
+		} finally {
+			release();
+		}
+		await runInDurableObject(room, async (instance, state) => {
+			await Reflect.get(instance, "chatAlarmTask");
+			expect(operations).toEqual([`schedule:${startedAt + 60_000}`, "cancel", `schedule:${startedAt + 70_000}`]);
+			expect(await state.storage.getAlarm()).toBe(startedAt + 70_000);
+		});
+		clock.mockReturnValue(startedAt + 60_001);
+		expect(await runDurableObjectAlarm(room)).toBe(true);
+		await runInDurableObject(room, (instance, state) => {
+			expect(Reflect.get(instance, "chat")).toEqual({ sessionId: initial.chat.sessionId, messages: [sent] });
+			return expect(state.storage.getAlarm()).resolves.toBe(startedAt + 70_000);
+		});
+		clock.mockReturnValue(startedAt + 70_001);
+		expect(await runDurableObjectAlarm(room)).toBe(true);
+		const next = await connect(room);
+		const fresh = await authenticate(next);
+		expect(fresh.chat.sessionId).not.toBe(initial.chat.sessionId);
+		expect(fresh.chat.messages).toEqual([]);
+	});
+	it.each(["unauthenticated", "viewer", "admin"])("does not let a %s connection cancel or extend pending grace", async mode => {
+		const log = vi.spyOn(console, "info").mockImplementation(() => {});
+		const room = newRoom();
+		const first = await connect(room);
+		const initial = await authenticate(first);
+		first.send({ type: "send_chat", text: "must still expire" });
+		const sent = (await first.take("chat_message")).message;
+		first.socket.close();
+		await expect.poll(() => first.socket.readyState).toBe(WebSocket.CLOSED);
+		const deadline = await runInDurableObject(room, (_instance, state) => state.storage.getAlarm());
+		expect(deadline).not.toBeNull();
+		vi.spyOn(Date, "now").mockReturnValue(deadline! - 10_000);
+		const outsider = await connect(room);
+		if (mode === "unauthenticated") {
+			outsider.send({ type: "ping" });
+			expect((await outsider.take("error")).message).toBe("Not authenticated");
+			outsider.socket.close(1000, "User left room");
+		} else {
+			outsider.send({ type: "authenticate", mode, password: "incorrect" });
+			expect((await outsider.take("error")).message).toBe(`Invalid ${mode === "admin" ? "admin" : "stream"} password`);
+		}
+		await expect.poll(() => outsider.socket.readyState).toBe(WebSocket.CLOSED);
+		await runInDurableObject(room, async (instance, state) => {
+			expect(Reflect.get(instance, "chatCleanupAt")).toBe(deadline);
+			expect(await state.storage.getAlarm()).toBe(deadline);
+			expect(Reflect.get(instance, "chat")).toEqual({ sessionId: initial.chat.sessionId, messages: [sent] });
+		});
+		const events = log.mock.calls.filter(call => call[0] === "[watchparty:room]")
+			.map(call => call[1]).filter(event => event.sessionId === initial.chat.sessionId || event.previousSessionId === initial.chat.sessionId);
+		expect(events.filter(event => event.event === "chat_cleanup_cancelled" || event.event === "chat_reset")).toEqual([]);
+		expect(events.filter(event => event.event === "chat_cleanup_scheduled")).toHaveLength(1);
+		vi.mocked(Date.now).mockReturnValue(deadline! + 1);
+		expect(await runDurableObjectAlarm(room)).toBe(true);
+		const next = await connect(room);
+		const fresh = await authenticate(next);
+		expect(fresh.chat.sessionId).not.toBe(initial.chat.sessionId);
+		expect(fresh.chat.messages).toEqual([]);
+	});
+	it.each([
+		{ code: 1000, reason: "User left room", deliberate: true },
+		{ code: 1001, reason: "User left room", deliberate: false },
+		{ code: 1008, reason: "User left room", deliberate: false },
+		{ code: 1000, reason: "user left room", deliberate: false },
+		{ code: 1000, reason: "User left room ", deliberate: false },
+		{ code: 1000, reason: "", deliberate: false },
+	])("treats compatibility close $code '$reason' as deliberate=$deliberate", async ({ code, reason, deliberate }) => {
+		const room = newRoom();
+		const client = await connect(room);
+		const initial = await authenticate(client);
+		client.send({ type: "send_chat", text: "compatibility close history" });
+		const sent = (await client.take("chat_message")).message;
+		await runInDurableObject(room, async (instance, state) => {
+			const [server] = Reflect.get(instance, "authenticatedSockets") as Set<WebSocket>;
+			server.dispatchEvent(new CloseEvent("close", { code, reason, wasClean: true }));
+			const chat = Reflect.get(instance, "chat") as ChatSnapshot;
+			await Reflect.get(instance, "chatAlarmTask");
+			if (deliberate) {
+				expect(chat.sessionId).not.toBe(initial.chat.sessionId);
+				expect(chat.messages).toEqual([]);
+				expect(await state.storage.getAlarm()).toBeNull();
+			} else {
+				expect(chat).toEqual({ sessionId: initial.chat.sessionId, messages: [sent] });
+				expect(await state.storage.getAlarm()).not.toBeNull();
+			}
+		});
+	});
+	it.each(["leave", "compatibility close", "error"])("resets exactly once after %s followed by duplicate leave/error/close events", async firstEvent => {
+		const log = vi.spyOn(console, "info").mockImplementation(() => {});
+		const room = newRoom();
+		const client = await connect(room);
+		const initial = await authenticate(client);
+		client.send({ type: "send_chat", text: "clear exactly once" });
+		const sent = (await client.take("chat_message")).message;
+		const deadline = await runInDurableObject(room, async (instance, state) => {
+			const [server] = Reflect.get(instance, "authenticatedSockets") as Set<WebSocket>;
+			const leave = () => server.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "leave" }) }));
+			const close = () => server.dispatchEvent(new CloseEvent("close", { code: 1000, reason: "User left room", wasClean: true }));
+			if (firstEvent === "leave") leave();
+			else if (firstEvent === "compatibility close") close();
+			else server.dispatchEvent(new Event("error"));
+			const afterFirst = Reflect.get(instance, "chat") as ChatSnapshot;
+			for (let i = 0; i < 2; i++) { leave(); server.dispatchEvent(new Event("error")); close(); }
+			expect(Reflect.get(instance, "chat")).toBe(afterFirst);
+			if (firstEvent === "error") expect(afterFirst).toEqual({ sessionId: initial.chat.sessionId, messages: [sent] });
+			else {
+				expect(afterFirst.sessionId).not.toBe(initial.chat.sessionId);
+				expect(afterFirst.messages).toEqual([]);
+			}
+			await Reflect.get(instance, "chatAlarmTask");
+			return state.storage.getAlarm();
+		});
+		if (firstEvent === "error") {
+			expect(deadline).not.toBeNull();
+			vi.spyOn(Date, "now").mockReturnValue(deadline! + 1);
+			expect(await runDurableObjectAlarm(room)).toBe(true);
+		} else expect(deadline).toBeNull();
+		expect(await runDurableObjectAlarm(room)).toBe(false);
+		const events = log.mock.calls.filter(call => call[0] === "[watchparty:room]")
+			.map(call => call[1]).filter(event => event.sessionId === initial.chat.sessionId || event.previousSessionId === initial.chat.sessionId);
+		expect(events.filter(event => event.event === "socket_disconnected")).toHaveLength(1);
+		expect(events.filter(event => event.event === "chat_cleanup_scheduled")).toHaveLength(firstEvent === "error" ? 1 : 0);
+		expect(events.filter(event => event.event === "chat_reset")).toEqual([
+			expect.objectContaining({ cause: firstEvent === "error" ? "empty_room_grace_expired" : "last_participant_left", previousSessionId: initial.chat.sessionId, clearedMessageCount: 1 })
+		]);
+	});
+	it("clears an empty room only after the 60-second grace deadline", async () => {
+		const room = newRoom();
+		const first = await connect(room);
+		const initial = await authenticate(first);
+		first.send({ type: "send_chat", text: "expires after the grace period" });
+		await first.take("chat_message");
+		const now = Date.now();
+		first.socket.close();
+		await expect.poll(() => first.socket.readyState).toBe(WebSocket.CLOSED);
+		expect(await runDurableObjectAlarm(room)).toBe(true);
+		await runInDurableObject(room, instance => {
+			const chat: ChatSnapshot = Reflect.get(instance, "chat");
+			expect(chat.sessionId).toBe(initial.chat.sessionId);
+			expect(chat.messages).toHaveLength(1);
+		});
+		vi.spyOn(Date, "now").mockReturnValue(now + 60_100);
+		expect(await runDurableObjectAlarm(room)).toBe(true);
+		const next = await connect(room);
+		const fresh = await authenticate(next);
+		expect(fresh.chat.sessionId).not.toBe(initial.chat.sessionId);
+		expect(fresh.chat.messages).toEqual([]);
+	});
+	it("does not revive expired history if authentication wins the race with the cleanup alarm", async () => {
+		const room = newRoom();
+		const first = await connect(room);
+		const initial = await authenticate(first);
+		first.send({ type: "send_chat", text: "expired" });
+		await first.take("chat_message");
+		const now = Date.now();
+		first.socket.close();
+		await expect.poll(() => first.socket.readyState).toBe(WebSocket.CLOSED);
+		vi.spyOn(Date, "now").mockReturnValue(now + 60_100);
+		const next = await connect(room);
+		const fresh = await authenticate(next);
+		expect(fresh.chat.sessionId).not.toBe(initial.chat.sessionId);
+		expect(fresh.chat.messages).toEqual([]);
+	});
+	it("only honors explicit leave from authenticated participants and keeps other participants' history", async () => {
+		const room = newRoom();
+		const first = await connect(room);
+		const second = await connect(room);
+		const outsider = await connect(room);
+		const initial = await authenticate(first);
+		await authenticate(second);
+		first.send({ type: "send_chat", text: "still occupied" });
+		const sent = (await first.take("chat_message")).message;
+		await second.take("chat_message");
+		outsider.send({ type: "leave" });
+		expect((await outsider.take("error")).message).toBe("Not authenticated");
+		first.send({ type: "leave" });
+		await expect.poll(() => first.socket.readyState).toBe(WebSocket.CLOSED);
+		expect((await authenticate(outsider)).chat).toEqual({ sessionId: initial.chat.sessionId, messages: [sent] });
+	});
+	it("logs disconnect and cleanup causes without credentials, chat text or peer-supplied close reasons", async () => {
+		const log = vi.spyOn(console, "info").mockImplementation(() => {});
+		const room = newRoom();
+		const client = await connect(room);
+		await authenticate(client, "viewer", "Private display name");
+		client.send({ type: "send_chat", text: "Private message contents" });
+		await client.take("chat_message");
+		client.socket.close(1000, "Private close reason");
+		await expect.poll(() => client.socket.readyState).toBe(WebSocket.CLOSED);
+		await runInDurableObject(room, () => {});
+		const events = log.mock.calls.filter(call => call[0] === "[watchparty:room]").map(call => call[1]);
+		expect(events).toContainEqual(expect.objectContaining({ event: "socket_disconnected", cause: "socket_close", code: 1000, wasAuthenticated: true }));
+		expect(events).toContainEqual(expect.objectContaining({ event: "chat_cleanup_scheduled", graceMs: 60_000 }));
+		const encoded = JSON.stringify(events);
+		for (const privateValue of ["Private display name", "Private message contents", "Private close reason", "qa-viewer"]) expect(encoded).not.toContain(privateValue);
+	});
+	it("logs late close metadata once after socket errors without repeating cleanup", async () => {
+		const log = vi.spyOn(console, "info").mockImplementation(() => {});
+		const room = newRoom();
+		const client = await connect(room);
+		const initial = await authenticate(client);
+		await runInDurableObject(room, instance => {
+			const accepted: Set<WebSocket> = Reflect.get(instance, "authenticatedSockets");
+			const [server] = accepted;
+			server.dispatchEvent(new Event("error"));
+			for (let index = 0; index < 2; index++) server.dispatchEvent(new CloseEvent("close", { code: 1011, reason: "Private reason", wasClean: false }));
+		});
+		const events = log.mock.calls.filter(call => call[0] === "[watchparty:room]").map(call => call[1]);
+		expect(events.filter(event => event.event === "socket_closed")).toEqual([
+			expect.objectContaining({ code: 1011, reason: "Peer reason omitted", wasClean: false })
+		]);
+		expect(events.filter(event => event.event === "socket_disconnected")).toHaveLength(1);
+		expect(events.filter(event => event.event === "chat_cleanup_scheduled")).toHaveLength(1);
+		expect(JSON.stringify(events)).not.toContain("Private reason");
+		await runInDurableObject(room, instance => expect((Reflect.get(instance, "chat") as ChatSnapshot).sessionId).toBe(initial.chat.sessionId));
+	});
+	it("assigns opaque per-socket sender IDs stable across renames and duplicate authentication", async () => {
+		const room = newRoom();
+		const first = await connect(room);
+		const second = await connect(room);
+		first.send({ type: "authenticate", mode: "viewer", password: "qa-viewer", name: "Same", senderId: "forged" });
+		const authenticated = await first.take("authenticated");
+		await first.take("chat_history");
+		await authenticate(second, "viewer", "Same");
+		first.send({ type: "send_chat", text: "first", senderId: "forged" });
+		const sent = (await first.take("chat_message")).message;
+		expect(sent).toHaveProperty("senderId", expect.any(String));
+		expect(sent.senderId).toMatch(/^[0-9a-f-]{36}$/);
+		expect(authenticated.senderId).toBe(sent.senderId);
+		expect(sent.senderId).not.toBe("forged");
+		expect(sent.senderId).not.toBe(sent.sessionId);
+		expect(sent.senderId).not.toBe(sent.id);
+		expect((await second.take("chat_message")).message).toEqual(sent);
+		second.send({ type: "send_chat", text: "second", senderId: sent.senderId });
+		const other = (await second.take("chat_message")).message;
+		expect(other.name).toBe(sent.name);
+		expect(other.senderId).toEqual(expect.any(String));
+		expect(other.senderId).not.toBe(sent.senderId);
+		await first.take("chat_message");
+		first.send({ type: "set_name", name: "Renamed", senderId: "replacement" });
+		await first.take("name_updated");
+		first.send({ type: "authenticate", mode: "viewer", password: "qa-viewer" });
+		await first.take("error");
+		first.send({ type: "send_chat", text: "renamed" });
+		const renamed = (await first.take("chat_message")).message;
+		expect(renamed).toMatchObject({ name: "Renamed", senderId: sent.senderId });
+		first.socket.close();
+		await expect.poll(() => first.socket.readyState).toBe(WebSocket.CLOSED);
+		await runInDurableObject(room, instance => {
+			const ids: Map<WebSocket, string> = Reflect.get(instance, "socketSenderIds");
+			expect([...ids.values()]).toEqual([other.senderId]);
+		});
+		const rejoined = await connect(room);
+		expect((await authenticate(rejoined, "viewer", "Renamed")).chat.messages).toEqual([sent, other, renamed]);
+		rejoined.send({ type: "send_chat", text: "rejoined" });
+		const fresh = (await rejoined.take("chat_message")).message;
+		expect(fresh.senderId).toEqual(expect.any(String));
+		expect([sent.senderId, other.senderId]).not.toContain(fresh.senderId);
+	});
+
+	it("broadcasts live GIF identifiers only, acknowledges them, and retains the flood guard", async () => {
+		const room = newRoom();
+		const client = await connect(room);
+		await authenticate(client);
+		const fetchSpy = vi.spyOn(globalThis, "fetch");
+		for (let i = 0; i < 8; i++) {
+			client.send({ type: "send_chat", text: "", gifId: "giphy:Ab0123", gifUrl: "https://evil.test/a.gif", requestId: `gif-${i}` });
+			const result = await client.take("chat_result");
+			expect(result).toEqual({ type: "chat_result", requestId: `gif-${i}`, accepted: true });
+			const item = (await client.take("chat_message")).message;
+			expect(item).toMatchObject({ text: "", gifId: "giphy:Ab0123", senderId: expect.any(String) });
+			expect(item).not.toHaveProperty("gifUrl");
+		}
+		expect(fetchSpy).not.toHaveBeenCalled();
+		client.send({ type: "send_chat", text: "", gifId: "giphy:Ab0123", requestId: "ninth" });
+		expect(await client.take("chat_result")).toMatchObject({ accepted: false, message: expect.stringContaining("quickly") });
+		const peer = await connect(room);
+		const history = (await authenticate(peer)).chat.messages;
+		expect(history).toHaveLength(8);
+		expect(history.every(item => item.gifId === "giphy:Ab0123")).toBe(true);
+	});
 	it("acknowledges only authenticated senders, including the ninth flood rejection and invalid chat", async () => {
 		const room = newRoom();
 		const owner = await connect(room);
@@ -96,8 +516,8 @@ describe("real room WebSockets", () => {
 		await expect.poll(() => client.socket.readyState).toBe(WebSocket.CLOSED);
 		const sessionAfterDisconnect = await runInDurableObject(room, (instance) => {
 			const chat: ChatSnapshot = Reflect.get(instance, "chat");
-			expect(chat.sessionId).not.toBe(initial.chat.sessionId);
-			expect(chat.messages).toEqual([]);
+			expect(chat.sessionId).toBe(initial.chat.sessionId);
+			expect(chat.messages.map(message => message.text)).toEqual(["old identity"]);
 			return chat.sessionId;
 		});
 		await runInDurableObject(room, (instance) => {
@@ -109,8 +529,8 @@ describe("real room WebSockets", () => {
 			]) server.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(data) }));
 			const chat: ChatSnapshot = Reflect.get(instance, "chat");
 			expect(chat.sessionId).toBe(sessionAfterDisconnect);
-			expect(chat.messages).toEqual([]);
-			for (const key of ["sockets", "authenticatedSockets", "socketRoles", "socketNames", "chatFloodWindows"]) {
+			expect(chat.messages.map(message => message.text)).toEqual(["old identity"]);
+			for (const key of ["sockets", "authenticatedSockets", "socketRoles", "socketNames", "socketProfiles", "socketSenderIds", "chatFloodWindows", "socketOpenedAt", "socketLastPingAt"]) {
 				const entries: Set<WebSocket> | Map<WebSocket, unknown> = Reflect.get(instance, key);
 				expect(entries.size, key).toBe(0);
 			}
@@ -203,7 +623,7 @@ describe("real room WebSockets", () => {
 		first.send({ type: "send_chat", text: "old session" });
 		await first.take("chat_message");
 		const unauthenticated = await connect(room);
-		first.socket.close();
+		first.send({ type: "leave" });
 		await expect.poll(() => first.socket.readyState).toBe(WebSocket.CLOSED);
 		const fresh = await authenticate(unauthenticated);
 		expect(fresh.chat.sessionId).not.toBe(initial.chat.sessionId);
@@ -234,7 +654,7 @@ describe("real room WebSockets", () => {
 		expect((await client.take("error")).message).toBe("Already authenticated");
 		client.send({ type: "clear_room" });
 		expect((await client.take("error")).message).toBe("Admin only.");
-		client.socket.close();
+		client.send({ type: "leave" });
 		await expect.poll(() => client.socket.readyState).toBe(WebSocket.CLOSED);
 		const next = await connect(room);
 		expect((await authenticate(next)).chat.sessionId).not.toBe(initial.chat.sessionId);
@@ -323,7 +743,7 @@ describe("real room WebSockets", () => {
 			});
 		});
 		try {
-			client.socket.close();
+			client.send({ type: "leave" });
 			await expect.poll(() => saving).toBe(true);
 			const fresh = await authenticate(next);
 			expect(fresh.chat.sessionId).not.toBe(initial.chat.sessionId);

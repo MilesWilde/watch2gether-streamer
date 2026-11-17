@@ -1,0 +1,25 @@
+Animated Noto Emoji by Google
+Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0).
+
+Official artwork and licensing statement:
+https://googlefonts.github.io/noto-emoji-files/
+
+Google's announcement of the animated artwork and its CC BY 4.0 license:
+https://developers.googleblog.com/en/updates-to-emoji-new-characters-new-animation-new-color-customization-and-more/
+
+License: https://creativecommons.org/licenses/by/4.0/
+Full license text: LICENSE.txt in this directory.
+
+These 200 animated 2D GIF files originate from Google's official
+fonts.gstatic.com CDN. Per-file changes (including whether a file remains
+unmodified) are recorded in /GIF-SOURCES.json, together with source URLs,
+retrieval dates, original source hashes, served-file hashes, file sizes,
+dimensions, and animation frame counts. The files are hosted locally,
+not hotlinked at runtime.
+
+No endorsement by Google is implied. The artwork is provided without
+warranties under the terms of the accompanying CC BY 4.0 license.
+
+The 36 historical GIPHY IDs remain lookup-only compatibility aliases for
+previously sent messages. They are not part of this local Noto catalog,
+are not covered by this license, and are not listed in the built-in picker.

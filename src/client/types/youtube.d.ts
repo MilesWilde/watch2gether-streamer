@@ -42,6 +42,7 @@ declare global {
 				onReady: (event: PlayerEvent) => void;
 				onStateChange: (event: OnStateChangeEvent) => void;
 				onError: (event: OnErrorEvent) => void;
+				onAutoplayBlocked?: (event: PlayerEvent) => void;
 			};
 		};
 
@@ -59,6 +60,7 @@ declare global {
 			stopVideo(): void;
 			seekTo(seconds: number, allowSeekAhead: boolean): void;
 			getCurrentTime(): number;
+			getDuration(): number;
 			setPlaybackRate(rate: number): void;
 			setVolume(volume: number): void;
 			unMute(): void;
@@ -70,6 +72,7 @@ declare global {
 			PLAYING: number;
 			PAUSED: number;
 			ENDED: number;
+			BUFFERING: number;
 		};
 	}
 }

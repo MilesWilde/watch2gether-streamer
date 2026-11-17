@@ -1,4 +1,5 @@
 import { normalizeChatName, parseChatInput, type ChatMessage, type ChatSnapshot } from "./chat";
+import { parseChatProfile, type ChatProfile } from "./chat-profile";
 import {
     normalizePlaybackRate,
     type RequestedVideoInput,
@@ -11,9 +12,11 @@ export type AuthenticateClientMessage = {
     password: string;
     mode: UserRole;
     name?: string;
+    profile?: ChatProfile;
 };
 
 export type SetNameClientMessage = { type: "set_name"; name: string };
+export type SetProfileClientMessage = { type: "set_profile"; name: string; profile: ChatProfile };
 export type SendChatClientMessage = { type: "send_chat"; text: string; gifId?: string; requestId?: string };
 
 export type ChatResultServerMessage = {
@@ -42,6 +45,8 @@ export function getChatRequestId(raw: unknown): string | undefined {
 export type PingClientMessage = {
     type: "ping";
 };
+
+export type LeaveClientMessage = { type: "leave" };
 
 export type RequestVideoClientMessage = {
     type: "request_video";
@@ -91,6 +96,15 @@ export type SetPlaybackRateClientMessage = {
 
 export type NextVideoClientMessage = {
     type: "next_video";
+    playlistItemId?: string;
+    playbackUpdatedAtMs?: number;
+};
+
+export type SeekVideoClientMessage = {
+    type: "seek_video";
+    positionSec: number;
+    playlistItemId: string;
+    playbackUpdatedAtMs: number;
 };
 
 export type ClearRoomClientMessage = {
@@ -100,8 +114,10 @@ export type ClearRoomClientMessage = {
 export type ClientMessage =
     | AuthenticateClientMessage
     | SetNameClientMessage
+    | SetProfileClientMessage
     | SendChatClientMessage
     | PingClientMessage
+    | LeaveClientMessage
     | RequestVideoClientMessage
     | RequestVideosClientMessage
     | ApproveRequestClientMessage
@@ -111,6 +127,7 @@ export type ClientMessage =
     | PlayVideoClientMessage
     | PauseVideoClientMessage
     | SetPlaybackRateClientMessage
+    | SeekVideoClientMessage
     | NextVideoClientMessage
     | ClearRoomClientMessage;
 
@@ -119,6 +136,7 @@ export type AuthenticatedServerMessage = {
     role: UserRole;
     listenerCount: number;
     serverNowMs: number;
+    senderId?: string;
 };
 
 export type PresenceServerMessage = {
@@ -146,7 +164,7 @@ export type ServerMessage =
     | ChatResultServerMessage
     | { type: "chat_history"; chat: ChatSnapshot }
     | { type: "chat_message"; message: ChatMessage }
-    | { type: "name_updated"; name: string }
+    | { type: "name_updated"; name: string; profile?: ChatProfile }
     | PresenceServerMessage
     | StateServerMessage
     | PongServerMessage
@@ -161,6 +179,13 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         }
 
         const input = parsed as Record<string, unknown>;
+
+        if (parsed.type === "leave") return { type: "leave" };
+
+        if (parsed.type === "set_profile" && typeof input.name === "string") {
+            const profile = parseChatProfile(input.profile);
+            return profile ? { type: "set_profile", name: normalizeChatName(input.name), profile } : null;
+        }
 
         if (parsed.type === "set_name" && typeof input.name === "string") {
             return { type: "set_name", name: normalizeChatName(input.name) };
@@ -179,11 +204,14 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
             "mode" in parsed &&
             (parsed.mode === "viewer" || parsed.mode === "admin")
         ) {
+            const profile = input.profile === undefined ? undefined : parseChatProfile(input.profile);
+            if (profile === null) return null;
             return {
                 type: "authenticate",
                 password: parsed.password,
                 mode: parsed.mode,
-                ...(typeof input.name === "string" ? { name: normalizeChatName(input.name) } : {})
+                ...(typeof input.name === "string" ? { name: normalizeChatName(input.name) } : {}),
+                ...(profile ? { profile } : {})
             };
         }
 
@@ -292,7 +320,20 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
             };
         }
 
+        if (parsed.type === "seek_video") {
+            if (!hasPlaybackContext(input) || typeof input.positionSec !== 'number' ||
+                !Number.isFinite(input.positionSec) || input.positionSec < 0) return null;
+            return {
+                type: 'seek_video', positionSec: input.positionSec,
+                playlistItemId: input.playlistItemId, playbackUpdatedAtMs: input.playbackUpdatedAtMs,
+            };
+        }
+
         if (parsed.type === "next_video") {
+            if ('playlistItemId' in input || 'playbackUpdatedAtMs' in input) {
+                if (!hasPlaybackContext(input)) return null;
+                return { type: 'next_video', playlistItemId: input.playlistItemId, playbackUpdatedAtMs: input.playbackUpdatedAtMs };
+            }
             return {
                 type: "next_video"
             };
@@ -308,6 +349,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     } catch {
         return null;
     }
+}
+
+function hasPlaybackContext(input: Record<string, unknown>): input is Record<string, unknown> & { playlistItemId: string; playbackUpdatedAtMs: number } {
+    return typeof input.playlistItemId === 'string' && input.playlistItemId.length > 0 && input.playlistItemId.length <= 200 &&
+        typeof input.playbackUpdatedAtMs === 'number' && Number.isFinite(input.playbackUpdatedAtMs) && input.playbackUpdatedAtMs >= 0;
 }
 
 function parseRequestedVideoInput(value: unknown): RequestedVideoInput | null {

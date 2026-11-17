@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { appendChatMessage, clearChatCache, readChatCache, readPreferredName, replaceChatSnapshot, writeChatCache, writePreferredName } from '../src/client/lib/chatStorage';
+import { appendChatMessage, clearChatCache, isChatMessage, readChatCache, readPreferredName, replaceChatSnapshot, writeChatCache, writePreferredName } from '../src/client/lib/chatStorage';
+import { createDefaultChatProfile } from '../src/stream/chat-profile';
 
 function storage() {
 	const values = new Map<string, string>();
@@ -12,6 +13,67 @@ function storage() {
 const message = (id = '1', sessionId = 'live') => ({ id, sessionId, name: 'Alex', text: 'Hello', sentAtMs: 123 });
 
 describe('room chat cache', () => {
+	it('projects profile extras out of live ingestion, cache reads and cache writes', () => {
+		const safe = { ...message(), profile: createDefaultChatProfile() };
+		const extra = { ...safe, debugUrl: 'https://evil.test', profile: { ...safe.profile, svg: '<svg/>', avatarUrl: 'https://evil.test' } };
+		expect(appendChatMessage({ sessionId: 'live', messages: [] }, extra)?.messages).toEqual([safe]);
+		const store = storage();
+		store.setItem('watchparty-chat:global', JSON.stringify({ version: 1, sessionId: 'live', messages: [extra] }));
+		expect(readChatCache(store)?.messages).toEqual([safe]);
+		writeChatCache(store, { sessionId: 'live', messages: [extra] });
+		const raw = store.getItem('watchparty-chat:global')!;
+		expect(raw).not.toContain('svg');
+		expect(raw).not.toContain('evil.test');
+	});
+	it('accepts validated robot profiles and legacy messages, but rejects unsafe profile fields', () => {
+		const profile = createDefaultChatProfile();
+		const item = { ...message(), profile };
+		const store = storage();
+		expect(isChatMessage(item)).toBe(true);
+		writeChatCache(store, { sessionId: 'live', messages: [item] });
+		expect(readChatCache(store)?.messages).toEqual([item]);
+		for (const invalid of [null, {}, { ...profile, eyes: '<svg/>' }, { ...profile, nameColor: 'url(evil)' }]) {
+			expect(isChatMessage({ ...message(), profile: invalid })).toBe(false);
+		}
+		expect(isChatMessage(message())).toBe(true);
+	});
+	it('preserves optional bounded sender IDs and legacy messages', () => {
+		for (const senderId of [undefined, 'a', 's'.repeat(200)]) {
+			const item = { ...message(), ...(senderId === undefined ? {} : { senderId }) };
+			expect(isChatMessage(item)).toBe(true);
+			const snapshot = { sessionId: 'live', messages: [item] };
+			const store = storage();
+			writeChatCache(store, snapshot);
+			expect(readChatCache(store)).toEqual(snapshot);
+		}
+	});
+	it('rejects malformed sender IDs in live messages and clears their caches', () => {
+		for (const senderId of ['', '   ', 's'.repeat(201), null, 12, {}]) {
+			const item = { ...message(), senderId };
+			expect(isChatMessage(item)).toBe(false);
+			const store = storage();
+			store.setItem('watchparty-chat:global', JSON.stringify({ version: 1, sessionId: 'live', messages: [item] }));
+			expect(readChatCache(store)).toBeNull();
+			expect(store.getItem('watchparty-chat:global')).toBeNull();
+		}
+	});
+	it('round trips GIF-only live provider identifiers without URLs', () => {
+		const item = { ...message(), senderId: 'server-sender', text: '', gifId: 'giphy:Ab0123' };
+		const snapshot = { sessionId: 'live', messages: [item] };
+		expect(appendChatMessage({ sessionId: 'live', messages: [] }, item)).toEqual(snapshot);
+		const store = storage();
+		writeChatCache(store, snapshot);
+		expect(readChatCache(store)).toEqual(snapshot);
+	});
+	it('rejects malformed live provider IDs in runtime and cached messages', () => {
+		for (const gifId of ['giphy:', `giphy:${'a'.repeat(65)}`, 'giphy:a_b', 'giphy:a/b', 'giphy:a\n', 'https://media.giphy.com/a.gif']) {
+			const item = { ...message(), gifId };
+			expect(isChatMessage(item)).toBe(false);
+			const store = storage();
+			store.setItem('watchparty-chat:global', JSON.stringify({ version: 1, sessionId: 'live', messages: [item] }));
+			expect(readChatCache(store)).toBeNull();
+		}
+	});
 	it('round trips a bounded room and session snapshot', () => {
 		const store = storage();
 		writeChatCache(store, { sessionId: 'live', messages: Array.from({ length: 510 }, (_, i) => message(String(i))) });
@@ -19,12 +81,21 @@ describe('room chat cache', () => {
 		expect(snapshot?.messages).toHaveLength(500);
 		expect(snapshot?.messages[0].id).toBe('10');
 	});
-	it('replaces cached history with the authoritative snapshot even for the same session', () => {
+	it('reconciles same-session history by ID with authoritative values and order', () => {
 		const cache = { sessionId: 'live', messages: [message('stale')] };
-		expect(replaceChatSnapshot(cache, { sessionId: 'live', messages: [message('new')] })).toEqual({ sessionId: 'live', messages: [message('new')] });
+		expect(replaceChatSnapshot(cache, { sessionId: 'live', messages: [message('new')] })).toEqual({ sessionId: 'live', messages: [message('stale'), message('new')] });
+		const edited = { ...message('stale'), text: 'Server correction' };
+		expect(replaceChatSnapshot(cache, { sessionId: 'live', messages: [message('new'), edited, edited] })?.messages).toEqual([message('new'), edited]);
 	});
 	it('accepts a new session without retaining old messages', () => {
 		expect(replaceChatSnapshot({ sessionId: 'old', messages: [message('old', 'old')] }, { sessionId: 'new', messages: [] })).toEqual({ sessionId: 'new', messages: [] });
+	});
+	it('bounds reconciled history without dropping authoritative messages', () => {
+		const cache = { sessionId: 'live', messages: Array.from({ length: 500 }, (_, i) => message(String(i))) };
+		const result = replaceChatSnapshot(cache, { sessionId: 'live', messages: [message('next'), message('next')] });
+		expect(result?.messages).toHaveLength(500);
+		expect(result?.messages[0].id).toBe('1');
+		expect(result?.messages.at(-1)?.id).toBe('next');
 	});
 	it('ignores live messages until a confirmed snapshot exists', () => {
 		expect(appendChatMessage(null, message())).toBeNull();

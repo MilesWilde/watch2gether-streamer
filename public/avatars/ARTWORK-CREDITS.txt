@@ -1,0 +1,25 @@
+Mixed Chat Avatar Artwork
+
+Robot parts: Bottts by Pablo Stanley, as distributed in @dicebear/bottts 9.4.3.
+https://bottts.com/
+Free for personal and commercial use. DiceBear implementation: MIT.
+See /avatars/BOTTTS-LICENSE.txt.
+
+Cat and insect parts: OpenMoji by Benedikt Gross, Daniel Utz, and the OpenMoji
+contributors at HfG Schwabisch Gmund. Source: OpenMoji 15.1.0.
+https://github.com/hfg-gmuend/openmoji/tree/15.1.0
+Graphics license: Creative Commons Attribution-ShareAlike 4.0 International.
+https://creativecommons.org/licenses/by-sa/4.0/
+Full license and original SVGs: /avatars/openmoji/LICENSE.txt and
+/avatars/openmoji/{1F431,1F41E,1F41C,1F99F,1F98B}.svg.
+
+Modifications: separated cat facial features, ears and whiskers, beetle head
+and spots, insect legs and antennae, mosquito proboscis, and insect wings;
+recolored fills; cropped ear and head silhouettes; added an oval head adapter;
+scaled, translated and rotated parts to align on a 180 by 180 avatar canvas.
+Modified OpenMoji artwork and mixed composite artwork are shared under
+CC BY-SA 4.0. This artwork notice does not change the application code license.
+
+Source extraction: scripts/prepare-avatar-parts.py.
+Generated robot geometry preserves the pinned Bottts component paths.
+No user-provided SVGs or external avatar URLs are accepted by the builder.
