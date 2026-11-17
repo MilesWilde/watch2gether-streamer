@@ -333,7 +333,7 @@ describe('app notification join lifecycle', () => {
 	});
 });
 
-it('moves the notification control into the viewing settings cog', () => {
+it('routes the notification control through its settings category', () => {
 	const toggle = vi.fn();
 	for (const enabled of [true, false]) {
 		hooks.slots = [];
@@ -345,6 +345,8 @@ it('moves the notification control into the viewing settings cog', () => {
 		const trigger = render().find(node => node.props['aria-label'] === 'Viewing settings');
 		expect(trigger.props['aria-expanded']).toBe(false);
 		trigger.props.onClick();
+		const notificationsTab = render().find(node => node.props.role === 'tab' && elements(node).some(child => child.type === 'span' && child.props.children === 'Notifications'));
+		notificationsTab.props.onClick();
 		const label = render().find(node => node.type === 'label' && elements(node).some(child => child.type === 'span' && child.props.children === 'Chat notifications'));
 		const checkbox = elements(label).find(node => node.type === 'input');
 		expect(checkbox.props.checked).toBe(enabled);

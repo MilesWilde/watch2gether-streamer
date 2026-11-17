@@ -773,25 +773,39 @@ textarea:focus-visible,
 .theater-mode .app-header { margin-bottom: 0.75rem; }
 
 .watch-settings { position: relative; flex: 0 0 auto; }
-.watch-settings-panel {
-	position: fixed;
-	top: 8px;
-	left: 8px;
-	visibility: hidden;
-	z-index: 20;
-	width: min(320px, calc(100vw - 16px));
-	max-height: calc(100dvh - 16px);
-	overflow-y: auto;
-	overscroll-behavior: contain;
-	padding: 1rem;
+.watch-settings-dialog {
+	inset: 0;
+	margin: auto;
+	width: min(760px, calc(100vw - 32px));
+	height: min(520px, calc(100dvh - 32px));
+	max-width: calc(100vw - 32px);
+	max-height: calc(100dvh - 32px);
+	padding: 0;
+	overflow: hidden;
 	border: 1px solid #454b53;
-	border-radius: 8px;
+	border-radius: 12px;
 	background: #1b1e23;
-	box-shadow: 0 8px 30px #0008;
+	color: #f7f7f8;
+	box-shadow: 0 16px 60px #0009;
 }
-.watch-settings-panel header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
-.watch-settings-panel h2 { margin: 0; }
-.watch-settings-panel header .icon-button { min-height: 2rem; width: 2rem; height: 2rem; flex-basis: 2rem; }
+.watch-settings-dialog[open] { display: flex; flex-direction: column; }
+.watch-settings-dialog::backdrop { background: rgba(5, 6, 9, 0.75); }
+.watch-settings-header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid #34383e; }
+.watch-settings-header h2 { margin: 0; font-size: 1.1rem; }
+.watch-settings-header .icon-button { min-height: 2rem; width: 2rem; height: 2rem; flex-basis: 2rem; }
+.watch-settings-body { display: grid; grid-template-columns: 180px minmax(0, 1fr); flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.watch-settings-nav { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; padding: 0.75rem; overflow: auto; overscroll-behavior: contain; border-right: 1px solid #34383e; background: #171a1f; }
+.watch-settings-nav button { display: flex; flex: 0 0 auto; align-items: center; gap: 0.55rem; padding: 0.65rem; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #b9c1cd; text-align: left; font-size: 0.85rem; font-weight: 600; }
+.watch-settings-nav button svg { flex: 0 0 auto; }
+.watch-settings-nav button:hover { background: #252b33; }
+.watch-settings-nav button[aria-selected="true"] { border-color: #405e51; background: #243d34; color: #bcebd3; }
+.watch-settings-content { min-width: 0; min-height: 0; padding: 1.25rem; overflow-y: auto; overscroll-behavior: contain; }
+.watch-settings-content h3 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+.watch-settings-content > p { margin: 0 0 1rem; color: #a8b2bd; font-size: 0.85rem; line-height: 1.5; }
+.watch-settings-content .watch-setting-position { padding: 0.75rem 0; font-size: 0.9rem; }
+.watch-settings-footer { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1.25rem; border-top: 1px solid #34383e; }
+.watch-settings-footer small { color: #a8b2bd; font-size: 0.75rem; line-height: 1.5; }
+.watch-settings-footer button { flex: 0 0 auto; min-height: 2.25rem; padding: 0.5rem 1rem; }
 .watch-setting-toggle { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 0; font-size: 0.9rem; cursor: pointer; }
 .watch-setting-toggle input { flex: 0 0 1rem; margin: 0; }
 .watch-setting-toggle kbd { margin-left: 0.5rem; padding: 0.1rem 0.35rem; border: 1px solid #545c69; border-radius: 3px; color: #c7ccd8; font-size: 0.75rem; }
@@ -803,6 +817,13 @@ textarea:focus-visible,
 .watch-setting-opacity output { font-variant-numeric: tabular-nums; }
 .watch-setting-opacity input { min-height: 1.5rem; padding: 0; accent-color: #85d6b0; }
 .watch-setting-help { margin: 0.5rem 0; color: #a8b2bd; font-size: 0.75rem; line-height: 1.5; }
+
+@media (max-width: 560px) {
+	.watch-settings-header, .watch-settings-footer { padding: 0.75rem 1rem; }
+	.watch-settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+	.watch-settings-nav { flex-direction: row; gap: 0.25rem; padding: 0.5rem; border-right: 0; border-bottom: 1px solid #34383e; }
+	.watch-settings-content { padding: 1rem; }
+}
 
 @media (min-width: 821px) {
 	.app-shell[data-chat-side="left"] .app-header, .app-shell[data-chat-side="left"] .support-band { margin-left: calc(320px + 1.5rem); }
