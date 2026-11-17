@@ -1,7 +1,7 @@
 import { useLayoutEffect, type RefObject } from 'react';
 
-/** Keep the desktop composer inside the visible window as the player changes size. */
-export function useChatViewportHeight(chatRef: RefObject<HTMLDivElement | null>): void {
+/** Fill the visible window vertically while following the sidebar's reserved column. */
+export function useChatViewportLayout(chatRef: RefObject<HTMLDivElement | null>, side: 'left' | 'right'): void {
 	useLayoutEffect(() => {
 		const frame = chatRef.current;
 		const panel = frame?.querySelector<HTMLElement>('.chat-panel');
@@ -9,9 +9,11 @@ export function useChatViewportHeight(chatRef: RefObject<HTMLDivElement | null>)
 		const viewport = window.visualViewport;
 		let pendingFrame: number | null = null;
 		const measure = () => {
-			const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
-			const available = Math.max(0, bottom - frame.getBoundingClientRect().top - 12);
-			frame.style.setProperty('--chat-viewport-height', `${available}px`);
+			const bounds = frame.getBoundingClientRect();
+			frame.style.setProperty('--chat-viewport-top', `${viewport?.offsetTop ?? 0}px`);
+			frame.style.setProperty('--chat-viewport-height', `${viewport?.height ?? window.innerHeight}px`);
+			frame.style.setProperty('--chat-viewport-left', `${bounds.left}px`);
+			frame.style.setProperty('--chat-viewport-width', `${bounds.width}px`);
 			// An unusually tall composer still needs a scrollable escape. Leave
 			// normal panels unclipped so inline emoji suggestions can extend above them.
 			panel.toggleAttribute('data-viewport-overflow', panel.scrollHeight > panel.clientHeight + 1);
@@ -24,9 +26,9 @@ export function useChatViewportHeight(chatRef: RefObject<HTMLDivElement | null>)
 			});
 		};
 		const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
-		// Header wrapping moves chat without necessarily resizing its own frame.
+		// Track the reserved column and content changes that can require scrolling.
 		const shell = frame.closest('.app-shell');
-		for (const element of [frame, panel, shell, ...panel.children]) {
+		for (const element of [frame, panel, shell, document.documentElement, ...panel.children]) {
 			if (element) observer?.observe(element);
 		}
 		window.addEventListener('resize', schedule);
@@ -45,8 +47,10 @@ export function useChatViewportHeight(chatRef: RefObject<HTMLDivElement | null>)
 			viewport?.removeEventListener('scroll', schedule);
 			document.removeEventListener('fullscreenchange', schedule);
 			document.removeEventListener('webkitfullscreenchange', schedule);
-			frame.style.removeProperty('--chat-viewport-height');
+			for (const dimension of ['top', 'height', 'left', 'width']) {
+				frame.style.removeProperty(`--chat-viewport-${dimension}`);
+			}
 			panel.removeAttribute('data-viewport-overflow');
 		};
-	}, [chatRef]);
+	}, [chatRef, side]);
 }

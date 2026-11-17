@@ -155,7 +155,7 @@ export function WatchPartyApp() {
 	}
 
 	return (
-		<main className={`app-shell${sessionRequested && hasJoined && viewing.preferences.theater ? ' theater-mode' : ''}`}>
+		<main className={`app-shell${sessionRequested && hasJoined && viewing.preferences.theater ? ' theater-mode' : ''}`} data-chat-side={sessionRequested && hasJoined ? viewing.preferences.chatSide : undefined}>
 			<RoomHeader
 				status={status}
 				listenerCount={listenerCount}

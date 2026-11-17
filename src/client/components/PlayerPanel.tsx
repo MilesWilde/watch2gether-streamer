@@ -3,7 +3,7 @@ import type { ClientMessage } from "../../stream/messages";
 import type { ChatMessage } from '../../stream/chat';
 import type { StreamState, UserRole } from "../../stream/playlist";
 import { useYouTubePlayer } from "../hooks/useYouTubePlayer";
-import { useChatViewportHeight } from '../hooks/useChatViewportHeight';
+import { useChatViewportLayout } from '../hooks/useChatViewportLayout';
 import { Maximize, Minimize, PanelTop, Pause, Play, SkipForward, Trash2, Volume2 } from 'lucide-react';
 import type { WatchPreferences } from '../lib/watchPreferences';
 import { ChatOverlay } from './ChatOverlay';
@@ -39,7 +39,7 @@ export function PlayerPanel({
 	const isAdmin = role === "admin";
 	const [seekDraft, setSeekDraft] = useState<{ itemId: string; position: number } | null>(null);
 	const chatRef = useRef<HTMLDivElement>(null);
-	useChatViewportHeight(chatRef);
+	useChatViewportLayout(chatRef, preferences.chatSide);
 	const player = useYouTubePlayer({
 		role,
 		state,
