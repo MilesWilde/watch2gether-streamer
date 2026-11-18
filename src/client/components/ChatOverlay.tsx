@@ -11,16 +11,24 @@ function messageKey(message: ChatMessage): string {
 	return `${message.sessionId}:${message.id}`;
 }
 
-export function ChatOverlay({ messages, opacity, side }: { messages: ChatMessage[]; opacity: number; side: WatchPreferences['overlaySide'] }) {
+export function ChatOverlay({ messages, opacity, side, backgroundColor = '#000000', backgroundOpacity = 50 }: {
+	messages: ChatMessage[];
+	opacity: number;
+	side: WatchPreferences['overlaySide'];
+	backgroundColor?: string;
+	backgroundOpacity?: number;
+}) {
 	const [poppedKeys, setPoppedKeys] = useState<ReadonlySet<string>>(() => new Set());
 	const frameRef = useRef<HTMLDivElement>(null);
 	const textOpacity = Number.isFinite(opacity) ? Math.max(0, Math.min(100, opacity)) / 100 : 1;
+	const backdropColor = /^#[0-9a-f]{6}$/i.test(backgroundColor) ? backgroundColor : '#000000';
+	const backdropOpacity = Number.isFinite(backgroundOpacity) ? Math.max(0, Math.min(100, backgroundOpacity)) / 100 : 0.5;
 	const bufferedMessages = messages.slice(-MAX_CHAT_MESSAGES);
 	const sourceKeys = new Set(bufferedMessages.map(messageKey));
 	// Source history preserves arrival order even after a server clock correction.
 	const visibleMessages = bufferedMessages
 		.filter(message => !poppedKeys.has(messageKey(message)) && Number.isFinite(message.sentAtMs));
-	const active = textOpacity > 0 && visibleMessages.length > 0;
+	const active = visibleMessages.length > 0 && (textOpacity > 0 || backdropOpacity > 0);
 	const visibleKeys = visibleMessages.map(messageKey).join('\n');
 
 	useLayoutEffect(() => {
@@ -39,9 +47,12 @@ export function ChatOverlay({ messages, opacity, side }: { messages: ChatMessage
 		const rows = Array.from(frame.querySelectorAll<HTMLElement>(':scope > .chat-overlay-message'));
 		const measure = () => {
 			if (frame.clientHeight <= 0) return;
-			const available = frame.getBoundingClientRect().height;
+			const frameHeight = frame.getBoundingClientRect().height;
+			const style = getComputedStyle(frame);
+			const padding = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
+			const available = frameHeight - padding;
 			if (available <= 0) return;
-			const gap = Number.parseFloat(getComputedStyle(frame).rowGap) || 0;
+			const gap = Number.parseFloat(style.rowGap) || 0;
 			// Rows do not animate their geometry; retain fractional layout heights.
 			const heights = rows.map(row => row.getBoundingClientRect().height);
 			let occupied = heights.reduce((sum, height) => sum + height, 0) + Math.max(0, rows.length - 1) * gap;
@@ -53,6 +64,7 @@ export function ChatOverlay({ messages, opacity, side }: { messages: ChatMessage
 				if (key) removed.push(key);
 				firstRetained++;
 			}
+			frame.style.setProperty('--chat-overlay-background-height', `${Math.min(frameHeight, occupied + padding)}px`);
 			for (const row of rows) {
 				const body = row.querySelector<HTMLElement>('.chat-overlay-message-body');
 				row.toggleAttribute('data-clipped', Boolean(body && body.offsetHeight > row.clientHeight + 1));
@@ -88,6 +100,7 @@ export function ChatOverlay({ messages, opacity, side }: { messages: ChatMessage
 
 	if (!active) return null;
 	return <div ref={frameRef} className="chat-overlay" data-side={side} aria-hidden={true} inert={true}>
+		<div className="chat-overlay-background" style={{ backgroundColor: backdropColor, opacity: backdropOpacity }} />
 		{visibleMessages.map(message => {
 			return <div className="chat-overlay-message" key={messageKey(message)} data-message-key={messageKey(message)} style={{ opacity: textOpacity }}>
 				<div className="chat-overlay-message-body">

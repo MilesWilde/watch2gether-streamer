@@ -71,7 +71,7 @@ export function PlayerPanel({
 				<div className={currentItem ? "youtube-player" : "youtube-player hidden"} inert={!connected}>
 					<div ref={player.playerMountRef} className="youtube-player-mount" />
 				</div>
-				{currentItem && preferences.chatOverlay && <ChatOverlay messages={chatMessages} opacity={preferences.overlayOpacity} side={preferences.overlaySide} />}
+				{currentItem && preferences.chatOverlay && <ChatOverlay messages={chatMessages} opacity={preferences.overlayOpacity} side={preferences.overlaySide} backgroundColor={preferences.overlayBackgroundColor} backgroundOpacity={preferences.overlayBackgroundOpacity} />}
 			</div>
 			<div ref={chatRef} className="player-chat">{children}</div>
 

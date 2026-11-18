@@ -44,15 +44,18 @@ describe('persistent chat mirrored over the video', () => {
 	function message(id: string, sentAtMs = 100000): ChatMessage {
 		return { id, sessionId: 'room', name: 'Alex', text: `message ${id}`, sentAtMs };
 	}
-	function render(opacity = 60, mount?: (tree: Element | null) => void) {
+	function render(opacity = 60, mount?: (tree: Element | null) => void, background?: { backgroundColor?: string; backgroundOpacity?: number }) {
 		hooks.index = 0;
-		const tree = ChatOverlay({ messages, opacity, side: 'left' });
+		const tree = ChatOverlay({ messages, opacity, side: 'left', ...background });
 		mount?.(tree);
 		for (const effect of hooks.effects.splice(0)) effect();
 		return tree;
 	}
 	function rows(tree: unknown) {
 		return elements(tree).filter(node => node.props.className === 'chat-overlay-message');
+	}
+	function background(tree: unknown) {
+		return elements(tree).find(node => node.props.className === 'chat-overlay-background');
 	}
 	beforeEach(() => {
 		vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'performance'] });
@@ -75,6 +78,34 @@ describe('persistent chat mirrored over the video', () => {
 		expect(rows(tree)[0].props.style).toMatchObject({ opacity: 0.6 });
 		expect(elements(tree)[0].props).toMatchObject({ 'aria-hidden': true, inert: true });
 		expect(elements(tree).some(node => ['input', 'textarea', 'form'].includes(String(node.type)))).toBe(false);
+	});
+	it('defaults to a half-opacity black backdrop without dimming it with the text', () => {
+		const tree = render(55);
+		expect(background(tree)?.props.style).toMatchObject({ backgroundColor: '#000000', opacity: 0.5 });
+		expect(rows(tree)[0].props.style).toMatchObject({ opacity: 0.55 });
+		expect(elements(tree)[0].props.style ?? {}).not.toHaveProperty('opacity');
+	});
+	it('changes background color and opacity independently from retained message opacity', () => {
+		const tree = render(55, undefined, { backgroundColor: '#12ab34', backgroundOpacity: 75 });
+		expect(background(tree)?.props.style).toMatchObject({ backgroundColor: '#12ab34', opacity: 0.75 });
+		expect(rows(tree)[0].props.style).toMatchObject({ opacity: 0.55 });
+		const next = render(20, undefined, { backgroundColor: '#12ab34', backgroundOpacity: 75 });
+		expect(background(next)?.props.style).toMatchObject({ backgroundColor: '#12ab34', opacity: 0.75 });
+		expect(rows(next)[0].props.style).toMatchObject({ opacity: 0.2 });
+		expect(rows(next).map(row => row.key)).toEqual(['room:new']);
+	});
+	it('uses safe background defaults for invalid saved values', () => {
+		const tree = render(60, undefined, { backgroundColor: 'invalid-color', backgroundOpacity: NaN });
+		expect(background(tree)?.props.style).toMatchObject({ backgroundColor: '#000000', opacity: 0.5 });
+	});
+	it('keeps background and text visibility independent at zero opacity', () => {
+		const backgroundOnly = render(0);
+		expect(background(backgroundOnly)?.props.style).toMatchObject({ opacity: 0.5 });
+		expect(rows(backgroundOnly)[0].props.style).toMatchObject({ opacity: 0 });
+		const textOnly = render(60, undefined, { backgroundOpacity: 0 });
+		expect(background(textOnly)?.props.style).toMatchObject({ opacity: 0 });
+		expect(rows(textOnly)[0].props.style).toMatchObject({ opacity: 0.6 });
+		expect(render(0, undefined, { backgroundOpacity: 0 })).toBeNull();
 	});
 	it('keeps messages at the chosen opacity indefinitely without an expiry timer', () => {
 		render();
@@ -138,8 +169,8 @@ describe('persistent chat mirrored over the video', () => {
 		messages = [...messages, message('after-reconnect', 100250)];
 		expect(rows(render()).map(row => row.key)).toEqual(['room:new', 'room:after-reconnect']);
 	});
-	it('hides zero-opacity messages and restores retained history regardless of elapsed time', () => {
-		expect(render(0)).toBeNull();
+	it('hides the fully transparent overlay and restores retained history regardless of elapsed time', () => {
+		expect(render(0, undefined, { backgroundOpacity: 0 })).toBeNull();
 		expect(vi.getTimerCount()).toBe(0);
 		vi.advanceTimersByTime(60000);
 		expect(rows(render(90))[0].props.style).toMatchObject({ opacity: 0.9 });
@@ -154,23 +185,25 @@ describe('persistent chat mirrored over the video', () => {
 		expect(messages).toHaveLength(MAX_CHAT_MESSAGES + 1);
 	});
 	it('removes whole oldest rows from the top and keeps the newest bottom row through capacity changes', () => {
-		vi.stubGlobal('getComputedStyle', () => ({ rowGap: '8px' }));
+		vi.stubGlobal('getComputedStyle', () => ({ rowGap: '8px', paddingTop: '10px', paddingBottom: '10px' }));
 		vi.stubGlobal('ResizeObserver', undefined);
-		let frameHeight = 90;
+		let frameHeight = 110;
 		let mountedRows: unknown[] = [];
 		const clippedKeys = new Set<string>();
+		const frameStyles = new Map<string, string>();
 		const frame = {
 			get clientHeight() { return Math.round(frameHeight); },
 			getBoundingClientRect: () => ({ height: frameHeight }),
 			querySelectorAll: () => mountedRows,
+			style: { setProperty: (name: string, value: string) => frameStyles.set(name, value) },
 		};
-		function renderMeasured(opacity = 60) {
+		function renderMeasured(opacity = 60, backgroundOpacity = 50) {
 			return render(opacity, tree => {
 				if (!tree) return;
 				mountedRows = rows(tree).map(row => {
 					const key = String(row.key);
 					const bodyHeight = key === 'room:oversized' ? 120 : 40;
-					const height = Math.min(frameHeight, bodyHeight);
+					const height = Math.min(frameHeight - 20, bodyHeight);
 					return {
 						dataset: { messageKey: key },
 						clientHeight: height,
@@ -183,20 +216,28 @@ describe('persistent chat mirrored over the video', () => {
 					};
 				});
 				(tree.props.ref as { current: unknown }).current = frame;
-			});
+			}, { backgroundOpacity });
 		}
 		messages = [message('oldest', 200000), message('middle', 99000), message('latest')];
 		renderMeasured();
 		expect(rows(renderMeasured()).map(row => row.key)).toEqual(['room:middle', 'room:latest']);
+		expect(frameStyles.get('--chat-overlay-background-height')).toBe('108px');
+		frameHeight = 100;
+		messages = [...messages];
+		renderMeasured();
+		expect(rows(renderMeasured()).map(row => row.key)).toEqual(['room:latest']);
+		expect(frameStyles.get('--chat-overlay-background-height')).toBe('60px');
 		messages = [...messages, message('oversized', 95000)];
 		renderMeasured();
 		expect(rows(renderMeasured()).map(row => row.key)).toEqual(['room:oversized']);
 		expect(clippedKeys).toEqual(new Set(['room:oversized']));
-		expect(renderMeasured(0)).toBeNull();
+		expect(frameStyles.get('--chat-overlay-background-height')).toBe('100px');
+		expect(renderMeasured(0, 0)).toBeNull();
 		vi.advanceTimersByTime(365 * 24 * 60 * 60 * 1000);
 		frameHeight = 500;
 		expect(rows(renderMeasured(80)).map(row => row.key)).toEqual(['room:oversized']);
 		expect(clippedKeys.size).toBe(0);
+		expect(frameStyles.get('--chat-overlay-background-height')).toBe('140px');
 		expect(messages.map(item => item.id)).toEqual(['oldest', 'middle', 'latest', 'oversized']);
 	});
 	it('supports emotes and keeps message text escaped by React', () => {

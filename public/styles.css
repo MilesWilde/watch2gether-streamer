@@ -745,6 +745,7 @@ textarea:focus-visible,
 	justify-content: flex-end;
 	gap: 0.5rem;
 	width: min(320px, 80%);
+	padding: 10px;
 	overflow: hidden;
 	background: transparent;
 	pointer-events: none;
@@ -755,6 +756,15 @@ textarea:focus-visible,
 	text-shadow: 0 1px 3px #000, 0 0 4px #000;
 }
 .chat-overlay[data-side="right"] { left: auto; right: 10%; }
+.chat-overlay-background {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	z-index: -1;
+	height: var(--chat-overlay-background-height, 0px);
+	border-radius: 12px;
+}
 .chat-overlay-message { flex: 0 0 auto; min-width: 0; min-height: 0; max-height: 100%; overflow: hidden; overflow-wrap: anywhere; transition: opacity 250ms linear; }
 .chat-overlay-message-body { display: flow-root; animation: chat-overlay-arrive 160ms ease-out; }
 .chat-overlay-message[data-clipped] { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent); }
@@ -821,6 +831,8 @@ textarea:focus-visible,
 .watch-setting-position { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.5rem 0; font-size: 0.8rem; }
 .watch-setting-position select { width: auto; min-width: 6rem; }
 .watch-setting-position select:disabled { opacity: 0.54; cursor: not-allowed; }
+.watch-setting-color input { flex: 0 0 auto; width: 3rem; height: 2rem; padding: 0.15rem; cursor: pointer; }
+.watch-setting-color input:disabled { opacity: 0.54; cursor: not-allowed; }
 .watch-setting-opacity { display: grid; gap: 0.5rem; padding-top: 0.5rem; font-size: 0.8rem; }
 .watch-setting-opacity > span { display: flex; justify-content: space-between; gap: 0.5rem; }
 .watch-setting-opacity output { font-variant-numeric: tabular-nums; }
