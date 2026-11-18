@@ -44,7 +44,7 @@ describe('persistent chat mirrored over the video', () => {
 	function message(id: string, sentAtMs = 100000): ChatMessage {
 		return { id, sessionId: 'room', name: 'Alex', text: `message ${id}`, sentAtMs };
 	}
-	function render(opacity = 60, mount?: (tree: Element | null) => void, background?: { backgroundColor?: string; backgroundOpacity?: number }) {
+	function render(opacity = 60, mount?: (tree: Element | null) => void, background?: Partial<Parameters<typeof ChatOverlay>[0]>) {
 		hooks.index = 0;
 		const tree = ChatOverlay({ messages, opacity, side: 'left', ...background });
 		mount?.(tree);
@@ -184,6 +184,36 @@ describe('persistent chat mirrored over the video', () => {
 		expect(visible.at(-1)?.key).toBe(`room:${MAX_CHAT_MESSAGES}`);
 		expect(messages).toHaveLength(MAX_CHAT_MESSAGES + 1);
 	});
+	it('keeps history while a saved layout first grows to the runtime minimum size', () => {
+		vi.stubGlobal('getComputedStyle', () => ({ rowGap: '8px', paddingTop: '10px', paddingBottom: '10px' }));
+		vi.stubGlobal('ResizeObserver', undefined);
+		vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+		let frameHeight = 48;
+		let mountedRows: unknown[] = [];
+		const frame = {
+			parentElement: { getBoundingClientRect: () => ({ width: 200, height: 120 }) },
+			get clientHeight() { return Math.round(frameHeight); },
+			getBoundingClientRect: () => ({ height: frameHeight }),
+			querySelectorAll: () => mountedRows,
+			style: { setProperty: vi.fn() },
+		};
+		function renderMeasured() {
+			return render(60, tree => {
+				if (!tree) return;
+				frameHeight = Number.parseFloat((tree.props.style as { height: string }).height) / 100 * 120;
+				mountedRows = rows(tree).map(row => ({
+					dataset: { messageKey: row.key }, clientHeight: 24,
+					getBoundingClientRect: () => ({ height: 24 }),
+					querySelector: () => ({ offsetHeight: 24 }), toggleAttribute: vi.fn(),
+				}));
+				(tree.props.ref as { current: unknown }).current = frame;
+			}, { layout: { x: 10, y: 10, width: 30, height: 40 } });
+		}
+		messages = [message('older'), message('newest')];
+		renderMeasured();
+		expect(rows(renderMeasured()).map(row => row.key)).toEqual(['room:older', 'room:newest']);
+		expect(frameHeight).toBeCloseTo(80);
+	});
 	it('removes whole oldest rows from the top and keeps the newest bottom row through capacity changes', () => {
 		vi.stubGlobal('getComputedStyle', () => ({ rowGap: '8px', paddingTop: '10px', paddingBottom: '10px' }));
 		vi.stubGlobal('ResizeObserver', undefined);
@@ -197,7 +227,7 @@ describe('persistent chat mirrored over the video', () => {
 			querySelectorAll: () => mountedRows,
 			style: { setProperty: (name: string, value: string) => frameStyles.set(name, value) },
 		};
-		function renderMeasured(opacity = 60, backgroundOpacity = 50) {
+		function renderMeasured(opacity = 60, backgroundOpacity = 50, editing = false) {
 			return render(opacity, tree => {
 				if (!tree) return;
 				mountedRows = rows(tree).map(row => {
@@ -209,16 +239,25 @@ describe('persistent chat mirrored over the video', () => {
 						clientHeight: height,
 						getBoundingClientRect: () => ({ height }),
 						querySelector: () => ({ offsetHeight: bodyHeight }),
-						toggleAttribute: (_name: string, clipped: boolean) => {
+						toggleAttribute: (name: string, clipped: boolean) => {
+							if (name !== 'data-clipped') return;
 							if (clipped) clippedKeys.add(key);
 							else clippedKeys.delete(key);
 						},
 					};
 				});
-				(tree.props.ref as { current: unknown }).current = frame;
-			}, { backgroundOpacity });
+				const overlay = elements(tree).find(node => node.props.className === 'chat-overlay');
+				(overlay?.props.ref as { current: unknown }).current = frame;
+			}, { backgroundOpacity, editing });
 		}
 		messages = [message('oldest', 200000), message('middle', 99000), message('latest')];
+		renderMeasured(60, 50, true);
+		expect(rows(renderMeasured(60, 50, true)).map(row => row.key)).toEqual(['room:oldest', 'room:middle', 'room:latest']);
+		frameHeight = 500;
+		renderMeasured();
+		expect(rows(renderMeasured()).map(row => row.key)).toEqual(['room:oldest', 'room:middle', 'room:latest']);
+		frameHeight = 110;
+		messages = [...messages];
 		renderMeasured();
 		expect(rows(renderMeasured()).map(row => row.key)).toEqual(['room:middle', 'room:latest']);
 		expect(frameStyles.get('--chat-overlay-background-height')).toBe('108px');

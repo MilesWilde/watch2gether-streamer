@@ -7,6 +7,7 @@ import { useChatViewportLayout } from '../hooks/useChatViewportLayout';
 import { Maximize, Minimize, PanelTop, Pause, Play, SkipForward, Trash2, Volume2 } from 'lucide-react';
 import type { WatchPreferences } from '../lib/watchPreferences';
 import { ChatOverlay } from './ChatOverlay';
+import type { OverlayLayout } from '../lib/overlayLayout';
 
 const playbackRates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -21,6 +22,9 @@ type PlayerPanelProps = {
 	settings: ReactNode;
 	children: ReactNode;
 	chatMessages?: ChatMessage[];
+	overlayEditing?: boolean;
+	onOverlayLayoutChange?: (layout: OverlayLayout | null) => void;
+	onFinishOverlayEdit?: () => void;
 };
 
 export function PlayerPanel({
@@ -33,7 +37,10 @@ export function PlayerPanel({
 	onToggleTheater,
 	settings,
 	children,
-	chatMessages = []
+	chatMessages = [],
+	overlayEditing = false,
+	onOverlayLayoutChange,
+	onFinishOverlayEdit,
 }: PlayerPanelProps) {
 	const currentItem = state?.playlist[state.currentIndex] ?? null;
 	const isAdmin = role === "admin";
@@ -71,7 +78,7 @@ export function PlayerPanel({
 				<div className={currentItem ? "youtube-player" : "youtube-player hidden"} inert={!connected}>
 					<div ref={player.playerMountRef} className="youtube-player-mount" />
 				</div>
-				{currentItem && preferences.chatOverlay && <ChatOverlay messages={chatMessages} opacity={preferences.overlayOpacity} side={preferences.overlaySide} backgroundColor={preferences.overlayBackgroundColor} backgroundOpacity={preferences.overlayBackgroundOpacity} />}
+				{currentItem && preferences.chatOverlay && <ChatOverlay messages={chatMessages} opacity={preferences.overlayOpacity} side={preferences.overlaySide} backgroundColor={preferences.overlayBackgroundColor} backgroundOpacity={preferences.overlayBackgroundOpacity} layout={preferences.overlayLayout} editing={overlayEditing} onLayoutChange={onOverlayLayoutChange} onFinishEditing={onFinishOverlayEdit} />}
 			</div>
 			<div ref={chatRef} className="player-chat">{children}</div>
 

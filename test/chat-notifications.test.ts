@@ -7,6 +7,7 @@ import { PlayerPanel } from '../src/client/components/PlayerPanel';
 import { WatchSettings } from '../src/client/components/WatchSettings';
 import { defaultWatchPreferences } from '../src/client/lib/watchPreferences';
 import type { ServerMessage } from '../src/stream/messages';
+import { createEmptyStreamState, type StreamState } from '../src/stream/playlist';
 
 const hooks = vi.hoisted(() => ({
 	slots: [] as { current?: unknown; value?: unknown; deps?: readonly unknown[]; cleanup?: void | (() => void) }[],
@@ -245,7 +246,7 @@ function elements(node: any): any[] {
 	return [node, ...elements(node.props?.children)];
 }
 
-describe('app notification join lifecycle', () => {
+describe('app viewing and notification lifecycle', () => {
 	let doc: { title: string };
 	function render() {
 		hooks.index = 0;
@@ -254,6 +255,7 @@ describe('app notification join lifecycle', () => {
 		return {
 			header: nodes.find(node => node.type === RoomHeader)!.props,
 			settings: nodes.find(node => node.type === PlayerPanel)?.props.settings.props,
+			player: nodes.find(node => node.type === PlayerPanel)?.props,
 			auth: nodes.find(node => node.type === AuthPanel)?.props,
 		};
 	}
@@ -330,6 +332,41 @@ describe('app notification join lifecycle', () => {
 		expect(doc.title).toBe('(2) Watch Party');
 		render().header.onLeave();
 		expect(doc.title).toBe('Watch Party');
+	});
+
+	it('saves overlay layout while keeping edit mode temporary and tied to an available video', () => {
+		render();
+		const socket = SocketStub.instances[0];
+		expect(join(socket).settings.canEditOverlay).toBe(false);
+		const state: StreamState = {
+			...createEmptyStreamState(),
+			playlist: [{ id: 'video-1', provider: 'youtube', videoId: 'abcdefghijk', originalUrl: 'https://youtu.be/abcdefghijk', title: 'Video' }],
+		};
+		socket.message({ type: 'state', state });
+		expect(render().settings.canEditOverlay).toBe(true);
+		render().settings.onEditOverlay();
+		expect(render().player.overlayEditing).toBe(true);
+		const overlayLayout = { x: 20, y: 25, width: 35, height: 40 };
+		render().player.onOverlayLayoutChange(overlayLayout);
+		expect(render().settings.preferences.overlayLayout).toEqual(overlayLayout);
+		const saved = JSON.parse(localStorage.getItem('watchparty-viewing-preferences')!);
+		expect(saved.overlayLayout).toEqual(overlayLayout);
+		expect(saved).not.toHaveProperty('overlayEditing');
+		render().player.onFinishOverlayEdit();
+		expect(render().player.overlayEditing).toBe(false);
+
+		render().settings.onEditOverlay();
+		render().settings.onChange({ chatOverlay: false });
+		expect(render().player.overlayEditing).toBe(false);
+		render().settings.onChange({ chatOverlay: true });
+		expect(render().player.overlayEditing).toBe(false);
+		render().settings.onEditOverlay();
+		socket.message({ type: 'state', state: createEmptyStreamState() });
+		expect(render().settings.canEditOverlay).toBe(false);
+		expect(render().player.overlayEditing).toBe(false);
+		socket.message({ type: 'state', state });
+		expect(render().player.overlayEditing).toBe(false);
+		expect(render().settings.preferences.overlayLayout).toEqual(overlayLayout);
 	});
 });
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChatResultServerMessage, ClientMessage, ServerMessage } from "../stream/messages";
 import type { StreamState, UserRole } from "../stream/playlist";
 import { AuthPanel } from "./components/AuthPanel";
@@ -13,6 +13,7 @@ import { useChatNotifications } from './hooks/useChatNotifications';
 import { useWatchPartySocket } from "./hooks/useWatchPartySocket";
 import { useWatchPreferences } from './hooks/useWatchPreferences';
 import { WatchSettings } from './components/WatchSettings';
+import type { OverlayLayout } from './lib/overlayLayout';
 import {
 	clearSavedPassword,
 	getSavedPassword,
@@ -39,6 +40,14 @@ export function WatchPartyApp() {
 	const [hasJoined, setHasJoined] = useState(false);
 	const [stateReady, setStateReady] = useState(false);
 	const viewing = useWatchPreferences(sessionRequested && hasJoined);
+	const [overlayEditing, setOverlayEditing] = useState(false);
+	const canEditOverlay = Boolean(streamState?.playlist[streamState.currentIndex]);
+	const startOverlayEdit = useCallback(() => setOverlayEditing(true), []);
+	const finishOverlayEdit = useCallback(() => setOverlayEditing(false), []);
+	const updateOverlayLayout = useCallback((overlayLayout: OverlayLayout | null) => viewing.updatePreferences({ overlayLayout }), [viewing.updatePreferences]);
+	useEffect(() => {
+		if (!sessionRequested || !hasJoined || !canEditOverlay || !viewing.preferences.chatOverlay) setOverlayEditing(false);
+	}, [sessionRequested, hasJoined, canEditOverlay, viewing.preferences.chatOverlay]);
 	const chat = useRoomChat();
 	const notifications = useChatNotifications(sessionRequested);
 	const [chatResult, setChatResult] = useState<{ sessionId: string; result: ChatResultServerMessage } | null>(null);
@@ -167,7 +176,8 @@ export function WatchPartyApp() {
 					<section className="layout" aria-label="Watch room">
 						<PlayerPanel role={role} state={streamState} connected={controlsReady} onSend={send} onStatusChange={setServerError}
 							preferences={viewing.preferences} onToggleTheater={viewing.toggleTheater} chatMessages={chat.messages}
-							settings={<WatchSettings preferences={viewing.preferences} onChange={viewing.updatePreferences} notificationsEnabled={notifications.enabled} onToggleNotifications={notifications.toggle} />}>
+							overlayEditing={overlayEditing && canEditOverlay && viewing.preferences.chatOverlay} onOverlayLayoutChange={updateOverlayLayout} onFinishOverlayEdit={finishOverlayEdit}
+							settings={<WatchSettings preferences={viewing.preferences} onChange={viewing.updatePreferences} notificationsEnabled={notifications.enabled} onToggleNotifications={notifications.toggle} onEditOverlay={startOverlayEdit} canEditOverlay={canEditOverlay} />}>
 							<ChatPanel
 								messages={chat.messages}
 								name={chat.name}

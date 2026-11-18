@@ -1,9 +1,12 @@
+import { normalizeOverlayLayout, type OverlayLayout } from './overlayLayout';
+
 export type WatchPreferences = {
 	chatOverlay: boolean;
 	overlayOpacity: number;
 	overlaySide: 'left' | 'right';
 	overlayBackgroundColor: string;
 	overlayBackgroundOpacity: number;
+	overlayLayout: OverlayLayout | null;
 	chatSide: 'left' | 'right';
 	theater: boolean;
 };
@@ -14,6 +17,7 @@ export const defaultWatchPreferences: Readonly<WatchPreferences> = {
 	overlaySide: 'left',
 	overlayBackgroundColor: '#000000',
 	overlayBackgroundOpacity: 50,
+	overlayLayout: null,
 	chatSide: 'right',
 	theater: false,
 };
@@ -33,6 +37,7 @@ function normalize(value: unknown): WatchPreferences {
 		overlaySide: input.overlaySide === 'left' || input.overlaySide === 'right' ? input.overlaySide : defaultWatchPreferences.overlaySide,
 		overlayBackgroundColor: typeof input.overlayBackgroundColor === 'string' && /^#[0-9a-f]{6}$/i.test(input.overlayBackgroundColor) ? input.overlayBackgroundColor.toLowerCase() : defaultWatchPreferences.overlayBackgroundColor,
 		overlayBackgroundOpacity: typeof input.overlayBackgroundOpacity === 'number' && Number.isFinite(input.overlayBackgroundOpacity) ? Math.max(0, Math.min(100, Math.round(input.overlayBackgroundOpacity))) : defaultWatchPreferences.overlayBackgroundOpacity,
+		overlayLayout: normalizeOverlayLayout(input.overlayLayout),
 		chatSide: input.chatSide === 'left' || input.chatSide === 'right' ? input.chatSide : defaultWatchPreferences.chatSide,
 		theater: typeof input.theater === 'boolean' ? input.theater : defaultWatchPreferences.theater,
 	};

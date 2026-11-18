@@ -7,7 +7,7 @@ describe('local viewing preferences', () => {
 	] as const)('restores overlay %s and sidebar %s independently with opacity and theater choices', (overlaySide, chatSide) => {
 		const values = new Map<string, string>();
 		const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
-		const preferences = { chatOverlay: false, overlayOpacity: 28, overlaySide, overlayBackgroundColor: '#237a9f', overlayBackgroundOpacity: 37, chatSide, theater: true };
+		const preferences = { chatOverlay: false, overlayOpacity: 28, overlaySide, overlayBackgroundColor: '#237a9f', overlayBackgroundOpacity: 37, overlayLayout: null, chatSide, theater: true };
 		writeWatchPreferences(preferences, storage);
 		expect(readWatchPreferences(storage)).toEqual(preferences);
 		expect(JSON.parse(storage.getItem('watchparty-viewing-preferences')!)).toEqual({ version: 1, ...preferences });
@@ -27,9 +27,30 @@ describe('local viewing preferences', () => {
 	it('adds background defaults to legacy preferences without changing existing choices', () => {
 		const legacy = { chatOverlay: false, overlayOpacity: 28, overlaySide: 'right', chatSide: 'left', theater: true };
 		expect(readWatchPreferences({ getItem: () => JSON.stringify({ version: 1, ...legacy }) })).toEqual({
-			...legacy, overlayBackgroundColor: '#000000', overlayBackgroundOpacity: 50,
+			...legacy, overlayBackgroundColor: '#000000', overlayBackgroundOpacity: 50, overlayLayout: null,
 		});
 		expect(defaultWatchPreferences).toMatchObject({ overlayBackgroundColor: '#000000', overlayBackgroundOpacity: 50 });
+	});
+
+	it('migrates existing background and viewing choices to automatic layout', () => {
+		const legacy = { chatOverlay: false, overlayOpacity: 28, overlaySide: 'right', overlayBackgroundColor: '#237a9f', overlayBackgroundOpacity: 37, chatSide: 'left', theater: true };
+		expect(readWatchPreferences({ getItem: () => JSON.stringify({ version: 1, ...legacy }) })).toEqual({ ...legacy, overlayLayout: null });
+		expect(defaultWatchPreferences.overlayLayout).toBeNull();
+	});
+
+	it('round-trips normalized custom geometry within the existing storage size limit', () => {
+		const preferences = { ...defaultWatchPreferences, overlayBackgroundColor: '#abcdef', overlayLayout: { x: 10.123456, y: 20.654321, width: 30.987654, height: 40.123456 } };
+		let saved = '';
+		writeWatchPreferences(preferences, { setItem: (_key, value) => { saved = value; } });
+		const expected = { ...preferences, overlayLayout: { x: 10.1235, y: 20.6543, width: 30.9877, height: 40.1235 } };
+		expect(JSON.parse(saved)).toEqual({ version: 1, ...expected });
+		expect(saved.length).toBeLessThan(512);
+		expect(readWatchPreferences({ getItem: () => saved })).toEqual(expected);
+	});
+
+	it.each([undefined, null, 'layout', {}, { x: 10, y: 10, width: 0, height: 50 }, { x: 10, y: 10, width: 50 }])('falls back to automatic layout for invalid saved geometry %j', overlayLayout => {
+		const saved = JSON.stringify({ version: 1, overlayLayout, overlayOpacity: 28, overlayBackgroundColor: '#abcdef' });
+		expect(readWatchPreferences({ getItem: () => saved })).toMatchObject({ overlayLayout: null, overlayOpacity: 28, overlayBackgroundColor: '#abcdef' });
 	});
 
 	it.each([

@@ -7,6 +7,8 @@ type WatchSettingsProps = {
 	onChange: (preferences: Partial<WatchPreferences>) => void;
 	notificationsEnabled: boolean;
 	onToggleNotifications: () => void;
+	onEditOverlay?: () => void;
+	canEditOverlay?: boolean;
 };
 
 const sections = [
@@ -16,7 +18,7 @@ const sections = [
 ] as const;
 type SettingsSection = typeof sections[number]['id'];
 
-export function WatchSettings({ preferences, onChange, notificationsEnabled, onToggleNotifications }: WatchSettingsProps) {
+export function WatchSettings({ preferences, onChange, notificationsEnabled, onToggleNotifications, onEditOverlay, canEditOverlay = false }: WatchSettingsProps) {
 	const [open, setOpen] = useState(false);
 	const [section, setSection] = useState<SettingsSection>('chat');
 	const [horizontalTabs, setHorizontalTabs] = useState(() => typeof window !== 'undefined' && (window.matchMedia?.('(max-width: 560px)').matches ?? false));
@@ -126,7 +128,9 @@ export function WatchSettings({ preferences, onChange, notificationsEnabled, onT
 						<p className="watch-setting-help">Place the full chat panel on either side of the video. On small screens, it stays below the video.</p>
 						<h4>Video overlay</h4>
 						<label className="watch-setting-toggle"><span>Chat over video</span><input type="checkbox" checked={preferences.chatOverlay} onChange={event => onChange({ chatOverlay: event.currentTarget.checked })} /></label>
-						<label className="watch-setting-position"><span>Overlay position</span><select value={preferences.overlaySide} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlaySide: event.currentTarget.value === 'right' ? 'right' : 'left' })}><option value="left">Left</option><option value="right">Right</option></select></label>
+						<label className="watch-setting-position"><span>Overlay position</span><select value={preferences.overlayLayout ? 'custom' : preferences.overlaySide} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlaySide: event.currentTarget.value === 'right' ? 'right' : 'left', overlayLayout: null })}>{preferences.overlayLayout && <option value="custom" disabled>Custom</option>}<option value="left">Left</option><option value="right">Right</option></select></label>
+						<button id="watch-settings-edit-overlay" type="button" className="secondary-button watch-setting-edit" disabled={!preferences.chatOverlay || !canEditOverlay || !onEditOverlay} onClick={() => { close(); onEditOverlay?.(); }}>Edit overlay</button>
+						<p className="watch-setting-help">{canEditOverlay ? 'Drag to move and use the corner to resize. Choose a side to restore a preset layout.' : 'Select a video to move and resize the overlay.'}</p>
 						<label className="watch-setting-opacity" htmlFor="watch-settings-opacity"><span>Overlay text opacity <output>{preferences.overlayOpacity}%</output></span><input id="watch-settings-opacity" type="range" min="0" max="100" step="1" value={preferences.overlayOpacity} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlayOpacity: Number(event.currentTarget.value) })} /></label>
 						<label className="watch-setting-position watch-setting-color" htmlFor="watch-settings-background-color"><span>Overlay background color</span><input id="watch-settings-background-color" type="color" value={preferences.overlayBackgroundColor} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlayBackgroundColor: event.currentTarget.value })} /></label>
 						<label className="watch-setting-opacity" htmlFor="watch-settings-background-opacity"><span>Overlay background opacity <output>{preferences.overlayBackgroundOpacity}%</output></span><input id="watch-settings-background-opacity" type="range" min="0" max="100" step="1" value={preferences.overlayBackgroundOpacity} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlayBackgroundOpacity: Number(event.currentTarget.value) })} /></label>
