@@ -128,7 +128,7 @@ export function WatchSettings({ preferences, onChange, notificationsEnabled, onT
 						<label className="watch-setting-toggle"><span>Chat over video</span><input type="checkbox" checked={preferences.chatOverlay} onChange={event => onChange({ chatOverlay: event.currentTarget.checked })} /></label>
 						<label className="watch-setting-position"><span>Overlay position</span><select value={preferences.overlaySide} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlaySide: event.currentTarget.value === 'right' ? 'right' : 'left' })}><option value="left">Left</option><option value="right">Right</option></select></label>
 						<label className="watch-setting-opacity" htmlFor="watch-settings-opacity"><span>Overlay text opacity <output>{preferences.overlayOpacity}%</output></span><input id="watch-settings-opacity" type="range" min="0" max="100" step="1" value={preferences.overlayOpacity} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlayOpacity: Number(event.currentTarget.value) })} /></label>
-						<p className="watch-setting-help">Recent messages appear over the video and fade away. The full chat panel remains available.</p>
+						<p className="watch-setting-help">New messages appear at the bottom of the video overlay. Messages stay visible until it fills, then the oldest are removed. The full chat panel remains available.</p>
 						<p className="watch-setting-help">Chat and overlay choices are saved on this browser.</p>
 					</>}
 					{section === 'notifications' && <>

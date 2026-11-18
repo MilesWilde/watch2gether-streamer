@@ -1,13 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { MAX_CHAT_MESSAGES, type ChatMessage } from '../../stream/chat';
 import { createDefaultChatProfile } from '../../stream/chat-profile';
 import { tokenizeChatEmotes } from '../../stream/chat-emotes';
-import { getServerNowMs } from '../lib/serverClock';
 import type { WatchPreferences } from '../lib/watchPreferences';
 import { ChatGifAttachment } from './ChatGifAttachment';
 
-const lifetimeMs = 15000;
-const fadeMs = 3000;
 const defaultNameColor = createDefaultChatProfile().nameColor;
 
 function messageKey(message: ChatMessage): string {
@@ -15,20 +12,16 @@ function messageKey(message: ChatMessage): string {
 }
 
 export function ChatOverlay({ messages, opacity, side }: { messages: ChatMessage[]; opacity: number; side: WatchPreferences['overlaySide'] }) {
-	const [, setTick] = useState(0);
 	const [poppedKeys, setPoppedKeys] = useState<ReadonlySet<string>>(() => new Set());
 	const frameRef = useRef<HTMLDivElement>(null);
-	// Do not retain a clock value: reconnect may replace the local fallback with
-	// a corrected server clock, including one behind the local wall clock.
-	const nowMs = getServerNowMs();
 	const textOpacity = Number.isFinite(opacity) ? Math.max(0, Math.min(100, opacity)) / 100 : 1;
 	const bufferedMessages = messages.slice(-MAX_CHAT_MESSAGES);
 	const sourceKeys = new Set(bufferedMessages.map(messageKey));
-	const recent = bufferedMessages.slice().reverse()
-		.filter(message => !poppedKeys.has(messageKey(message)) && Number.isFinite(message.sentAtMs) && message.sentAtMs <= nowMs + 1000 && nowMs - message.sentAtMs < lifetimeMs)
-		.sort((first, second) => second.sentAtMs - first.sentAtMs);
-	const active = textOpacity > 0 && recent.length > 0;
-	const visibleKeys = recent.map(messageKey).join('\n');
+	// Source history preserves arrival order even after a server clock correction.
+	const visibleMessages = bufferedMessages
+		.filter(message => !poppedKeys.has(messageKey(message)) && Number.isFinite(message.sentAtMs));
+	const active = textOpacity > 0 && visibleMessages.length > 0;
+	const visibleKeys = visibleMessages.map(messageKey).join('\n');
 
 	useLayoutEffect(() => {
 		// Discards stay remembered for this source history, including while hidden.
@@ -52,13 +45,13 @@ export function ChatOverlay({ messages, opacity, side }: { messages: ChatMessage
 			// Rows do not animate their geometry; retain fractional layout heights.
 			const heights = rows.map(row => row.getBoundingClientRect().height);
 			let occupied = heights.reduce((sum, height) => sum + height, 0) + Math.max(0, rows.length - 1) * gap;
-			let retainedCount = rows.length;
+			let firstRetained = 0;
 			const removed: string[] = [];
-			while (retainedCount > 1 && occupied > available) {
-				retainedCount--;
-				occupied -= heights[retainedCount] + gap;
-				const key = rows[retainedCount].dataset.messageKey;
+			while (rows.length - firstRetained > 1 && occupied > available) {
+				occupied -= heights[firstRetained] + gap;
+				const key = rows[firstRetained].dataset.messageKey;
 				if (key) removed.push(key);
+				firstRetained++;
 			}
 			for (const row of rows) {
 				const body = row.querySelector<HTMLElement>('.chat-overlay-message-body');
@@ -93,18 +86,10 @@ export function ChatOverlay({ messages, opacity, side }: { messages: ChatMessage
 		};
 	}, [active, visibleKeys, messages]);
 
-	useEffect(() => {
-		if (!active) return;
-		const timer = setInterval(() => setTick(tick => tick + 1), 250);
-		return () => clearInterval(timer);
-	}, [active]);
-
 	if (!active) return null;
 	return <div ref={frameRef} className="chat-overlay" data-side={side} aria-hidden={true} inert={true}>
-		{recent.map(message => {
-			const ageMs = Math.max(0, nowMs - message.sentAtMs);
-			const fade = Math.min(1, (lifetimeMs - ageMs) / fadeMs);
-			return <div className="chat-overlay-message" key={messageKey(message)} data-message-key={messageKey(message)} style={{ opacity: textOpacity * fade }}>
+		{visibleMessages.map(message => {
+			return <div className="chat-overlay-message" key={messageKey(message)} data-message-key={messageKey(message)} style={{ opacity: textOpacity }}>
 				<div className="chat-overlay-message-body">
 					<p><strong style={{ color: `#${message.profile?.nameColor ?? defaultNameColor}` }}>{message.name}: </strong>
 						{tokenizeChatEmotes(message.text).map((token, index) => token.type === 'text' ? token.text : <img key={index} className="chat-emote" src={token.emote.url} alt={`:${token.emote.id}:`} width={32} height={32} />)}
