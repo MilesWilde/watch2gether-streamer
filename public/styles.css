@@ -742,6 +742,7 @@ textarea:focus-visible,
 	z-index: 1;
 	display: flex;
 	flex-direction: column;
+	justify-content: flex-end;
 	gap: 0.5rem;
 	width: min(320px, 80%);
 	overflow: hidden;
@@ -754,13 +755,20 @@ textarea:focus-visible,
 	text-shadow: 0 1px 3px #000, 0 0 4px #000;
 }
 .chat-overlay[data-side="right"] { left: auto; right: 10%; }
-.chat-overlay-message { flex: 0 0 auto; min-width: 0; max-height: 9rem; overflow: hidden; overflow-wrap: anywhere; transition: opacity 250ms linear; }
+.chat-overlay-message { flex: 0 0 auto; min-width: 0; min-height: 0; max-height: 100%; overflow: hidden; overflow-wrap: anywhere; transition: opacity 250ms linear; }
+.chat-overlay-message-body { display: flow-root; animation: chat-overlay-arrive 160ms ease-out; }
+.chat-overlay-message[data-clipped] { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent); }
+@keyframes chat-overlay-arrive {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
 .chat-overlay-message strong { font-size: 0.8rem; }
 .chat-overlay-message p { margin: 0; white-space: pre-wrap; }
 .chat-overlay .chat-gif-attachment { width: 120px; max-width: 100%; margin-top: 0.25rem; }
 .chat-overlay .chat-gif-image { width: 100%; background: transparent; }
 @media (prefers-reduced-motion: reduce) {
 	.chat-overlay-message { transition: none; }
+	.chat-overlay-message-body { animation: none; }
 }
 .player-panel > .transport { grid-area: transport; }
 .player-panel > .now-playing { grid-area: title; }
@@ -801,6 +809,7 @@ textarea:focus-visible,
 .watch-settings-nav button[aria-selected="true"] { border-color: #405e51; background: #243d34; color: #bcebd3; }
 .watch-settings-content { min-width: 0; min-height: 0; padding: 1.25rem; overflow-y: auto; overscroll-behavior: contain; }
 .watch-settings-content h3 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+.watch-settings-content h4 { margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid #34383e; font-size: 0.95rem; }
 .watch-settings-content > p { margin: 0 0 1rem; color: #a8b2bd; font-size: 0.85rem; line-height: 1.5; }
 .watch-settings-content .watch-setting-position { padding: 0.75rem 0; font-size: 0.9rem; }
 .watch-settings-footer { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1.25rem; border-top: 1px solid #34383e; }

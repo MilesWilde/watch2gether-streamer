@@ -5,26 +5,29 @@ import { ChatOverlay } from '../src/client/components/ChatOverlay';
 import { resetServerClock, sampleServerClock } from '../src/client/lib/serverClock';
 
 const hooks = vi.hoisted(() => ({
-	slots: [] as { value?: unknown; deps?: readonly unknown[]; cleanup?: void | (() => void) }[],
+	slots: [] as { current?: unknown; value?: unknown; deps?: readonly unknown[]; cleanup?: void | (() => void) }[],
 	index: 0,
 	effects: [] as (() => void)[],
 }));
 
 vi.mock('react', async importOriginal => {
 	const original = await importOriginal<typeof import('react')>();
+	function effect(callback: () => void | (() => void), deps: readonly unknown[]) {
+		const slot = hooks.slots[hooks.index++] ??= {};
+		if (!slot.deps || deps.length !== slot.deps.length || deps.some((dep, i) => !Object.is(dep, slot.deps?.[i]))) {
+			slot.deps = deps;
+			hooks.effects.push(() => { slot.cleanup?.(); slot.cleanup = callback(); });
+		}
+	}
 	return {
 		...original,
+		useRef: (current: unknown) => hooks.slots[hooks.index++] ??= { current },
 		useState: (initial: unknown) => {
 			const slot = hooks.slots[hooks.index++] ??= { value: typeof initial === 'function' ? initial() : initial };
 			return [slot.value, (next: unknown) => { slot.value = typeof next === 'function' ? next(slot.value) : next; }];
 		},
-		useEffect: (effect: () => void | (() => void), deps: readonly unknown[]) => {
-			const slot = hooks.slots[hooks.index++] ??= {};
-			if (!slot.deps || deps.length !== slot.deps.length || deps.some((dep, i) => !Object.is(dep, slot.deps?.[i]))) {
-				slot.deps = deps;
-				hooks.effects.push(() => { slot.cleanup?.(); slot.cleanup = effect(); });
-			}
-		},
+		useEffect: effect,
+		useLayoutEffect: effect,
 	};
 });
 
@@ -86,6 +89,12 @@ describe('recent chat mirrored over the video', () => {
 		expect(visible).toHaveLength(9);
 		expect(visible.map(row => row.key)).toEqual(['room:8', 'room:7', 'room:6', 'room:5', 'room:4', 'room:3', 'room:2', 'room:1', 'room:0']);
 		expect(messages).toHaveLength(9);
+	});
+	it('puts the latest arrival first when timestamps tie without reordering source history', () => {
+		messages = [message('older', 99000), message('first'), message('second'), message('third')];
+		const original = messages.slice();
+		expect(rows(render()).map(row => row.key)).toEqual(['room:third', 'room:second', 'room:first', 'room:older']);
+		expect(messages).toEqual(original);
 	});
 	it('keeps old history and invalid timestamps out of the overlay', () => {
 		messages = [message('old', 84999), message('invalid', NaN), message('far-future', 200000)];

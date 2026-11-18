@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Bell, MessageSquare, PanelLeft, Play, Settings, X } from 'lucide-react';
+import { Bell, MessageSquare, Play, Settings, X } from 'lucide-react';
 import type { WatchPreferences } from '../lib/watchPreferences';
 
 type WatchSettingsProps = {
@@ -10,7 +10,6 @@ type WatchSettingsProps = {
 };
 
 const sections = [
-	{ id: 'sidebar', label: 'Sidebar', Icon: PanelLeft },
 	{ id: 'chat', label: 'Chat', Icon: MessageSquare },
 	{ id: 'notifications', label: 'Notifications', Icon: Bell },
 	{ id: 'playback', label: 'Playback', Icon: Play },
@@ -19,7 +18,7 @@ type SettingsSection = typeof sections[number]['id'];
 
 export function WatchSettings({ preferences, onChange, notificationsEnabled, onToggleNotifications }: WatchSettingsProps) {
 	const [open, setOpen] = useState(false);
-	const [section, setSection] = useState<SettingsSection>('sidebar');
+	const [section, setSection] = useState<SettingsSection>('chat');
 	const [horizontalTabs, setHorizontalTabs] = useState(() => typeof window !== 'undefined' && (window.matchMedia?.('(max-width: 560px)').matches ?? false));
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -121,19 +120,16 @@ export function WatchSettings({ preferences, onChange, notificationsEnabled, onT
 					{sections.map(({ id, label, Icon }, index) => <button key={id} ref={element => { if (element) tabsRef.current[id] = element; else delete tabsRef.current[id]; }} type="button" role="tab" id={'watch-settings-tab-' + id} aria-selected={section === id} aria-controls="watch-settings-content" tabIndex={section === id ? 0 : -1} onClick={() => setSection(id)} onKeyDown={event => navigateTabs(event, index)}><Icon size={18} aria-hidden="true" /><span>{label}</span></button>)}
 				</nav>
 				<section id="watch-settings-content" className="watch-settings-content" role="tabpanel" aria-labelledby={'watch-settings-tab-' + section} tabIndex={0}>
-					{section === 'sidebar' && <>
-						<h3>Sidebar</h3>
-						<label className="watch-setting-position"><span>Chat sidebar position</span><select value={preferences.chatSide} onChange={event => onChange({ chatSide: event.currentTarget.value === 'left' ? 'left' : 'right' })}><option value="left">Left</option><option value="right">Right</option></select></label>
-						<p className="watch-setting-help">Place the full chat panel on either side of the video. On small screens, it stays below the video.</p>
-						<p className="watch-setting-help">Sidebar and overlay positions are independent. This choice is saved on this browser.</p>
-					</>}
 					{section === 'chat' && <>
-						<h3>Chat overlay</h3>
+						<h3>Chat</h3>
+						<label className="watch-setting-position"><span>Chat position</span><select value={preferences.chatSide} onChange={event => onChange({ chatSide: event.currentTarget.value === 'left' ? 'left' : 'right' })}><option value="left">Left</option><option value="right">Right</option></select></label>
+						<p className="watch-setting-help">Place the full chat panel on either side of the video. On small screens, it stays below the video.</p>
+						<h4>Video overlay</h4>
 						<label className="watch-setting-toggle"><span>Chat over video</span><input type="checkbox" checked={preferences.chatOverlay} onChange={event => onChange({ chatOverlay: event.currentTarget.checked })} /></label>
 						<label className="watch-setting-position"><span>Overlay position</span><select value={preferences.overlaySide} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlaySide: event.currentTarget.value === 'right' ? 'right' : 'left' })}><option value="left">Left</option><option value="right">Right</option></select></label>
 						<label className="watch-setting-opacity" htmlFor="watch-settings-opacity"><span>Overlay text opacity <output>{preferences.overlayOpacity}%</output></span><input id="watch-settings-opacity" type="range" min="0" max="100" step="1" value={preferences.overlayOpacity} disabled={!preferences.chatOverlay} onChange={event => onChange({ overlayOpacity: Number(event.currentTarget.value) })} /></label>
 						<p className="watch-setting-help">Recent messages appear over the video and fade away. The full chat panel remains available.</p>
-						<p className="watch-setting-help">Overlay choices are saved on this browser.</p>
+						<p className="watch-setting-help">Chat and overlay choices are saved on this browser.</p>
 					</>}
 					{section === 'notifications' && <>
 						<h3>Notifications</h3>
